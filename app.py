@@ -45,7 +45,7 @@ if arquivo_enviado is not None:
             df['Nr. Matricula'] = df['Nr. Matricula'].fillna('').astype(str).str.strip()
             df['Pessoa Resp Aut'] = df['Pessoa Resp Aut'].fillna('Não Atribuído').astype(str).str.strip()
             
-            # --- CRITÉRIO DE INSERÇÃO NO PORTAL AMIL (CORRIGIDO) ---
+            # --- CRITÉRIO DE INSERÇÃO NO PORTAL AMIL ---
             df['Inserido_Amil'] = (df['Nº Guia Solicitação (TISS)'] != '') | (df['Senha Aprovação'] != '') | (df['Status Aut Orç'] == 'Autorizado')
             
             total_pacientes = len(df)
@@ -57,7 +57,12 @@ if arquivo_enviado is not None:
             # Considera erro se estiver zerado ou fora do padrão de 8 ou 9 dígitos da Amil
             erro_matricula = (tam_matriculas == 0) | (~tam_matriculas.isin([8, 9]))
             
-            erro_datas = df['Data Início'].isna() | df['Data Fim'].isna() if 'Data Início' in df.columns and 'Data Fim' in df.columns else False
+            # Checagem segura das colunas de data (só valida se as colunas existirem com esses nomes exatos)
+            if 'Data Início' in df.columns and 'Data Fim' in df.columns:
+                erro_datas = df['Data Início'].isna() | df['Data Fim'].isna()
+            else:
+                erro_datas = False
+                
             erro_vinculo = df['Nr. Atendimento'].isna() | df['ID Orçam.'].isna()
             
             df['Possui_Erro'] = erro_matricula | erro_datas | erro_vinculo
