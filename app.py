@@ -25,7 +25,7 @@ if arquivo_enviado is not None:
                 # Tenta ler em UTF-8 primeiro
                 df = pd.read_csv(arquivo_enviado, sep=';', encoding='utf-8')
             except UnicodeDecodeError:
-                # Se falhar por causa de acentos (como o seu erro), tenta com ISO-8859-1
+                # Se falhar por causa de acentos, tenta com ISO-8859-1
                 arquivo_enviado.seek(0)
                 df = pd.read_csv(arquivo_enviado, sep=';', encoding='iso-8859-1')
             
@@ -100,24 +100,13 @@ if arquivo_enviado is not None:
                 st.caption("Quantidade de processos sob a responsabilidade de cada colaborador:")
                 ranking = df['Pessoa Resp Aut'].value_counts().reset_index()
                 ranking.columns = ['Colaborador', 'Pacientes Atribuídos']
-                st.dataframe(ranking, use_column_width=True, hide_index=True)
+                # Ajustado para o parâmetro correto 'use_container_width'
+                st.dataframe(ranking, use_container_width=True, hide_index=True)
                     
             with col_direita:
                 st.markdown("### 🚨 Lista de Erros para Correção Rápida")
                 st.caption("Pacientes com inconformidades detectadas no relatório:")
-                st.dataframe(pacientes_com_erro, use_column_width=True, hide_index=True)
+                # Ajustado para o parâmetro correto 'use_container_width'
+                st.dataframe(pacientes_com_erro, use_container_width=True, hide_index=True)
                 
-                # Botão para baixar planilha de erros
-                if len(pacientes_com_erro) > 0:
-                    csv_erros = pacientes_com_erro.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="📥 Baixar Planilha de Erros para Cobrar a Equipe",
-                        data=csv_erros,
-                        file_name="erros_faturamento_amil.csv",
-                        mime="text/csv",
-                    )
-                    
-    except Exception as e:
-        st.error(f"Erro inesperado ao processar o arquivo. Detalhe técnico: {e}")
-else:
-    st.info("💡 Tudo pronto! Aguardando você arrastar ou selecionar a planilha do IW acima para calcular...")
+                # Botão para baixar planilha de
