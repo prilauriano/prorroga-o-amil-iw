@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import re
 
 # Configuração da página e design do cabeçalho
 st.set_page_config(page_title="Painel Faturamento Amil", page_icon="📊", layout="wide")
@@ -54,10 +55,23 @@ if arquivo_enviado is not None:
             df['Nr. Matricula'] = df['Nr. Matricula'].fillna('').astype(str).str.strip()
             df['Pessoa Resp Aut'] = df['Pessoa Resp Aut'].fillna('Não Atribuído').astype(str).str.strip()
             
-            # Garante que a coluna de Valor a Cobrar está tratada como número puro
-            if df['Valor a Cobrar'].dtype == 'object':
-                df['Valor a Cobrar'] = df['Valor a Cobrar'].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
-            df['Valor a Cobrar'] = pd.to_numeric(df['Valor a Cobrar'], errors='coerce').fillna(0.0)
+            # --- CONVERSÃO INTELIGENTE DE MOEDA (CORRIGIDA) ---
+            def converter_moeda_br(valor):
+                valor_str = str(valor).strip()
+                if not valor_str or valor_str.lower() == 'nan':
+                    return 0.0
+                # Se terminar com ,XX (centavos clássicos), ajusta o padrão
+                if re.search(r',\d{2}$', valor_str):
+                    valor_str = valor_str.replace('.', '').replace(',', '.')
+                else:
+                    # Se tiver apenas pontos (ex: 3.505), remove o ponto para virar número cheio
+                    valor_str = valor_str.replace('.', '').replace(',', '.')
+                try:
+                    return float(valor_str)
+                except:
+                    return 0.0
+
+            df['Valor a Cobrar'] = df['Valor a Cobrar'].apply(converter_moeda_br)
             
             # --- CRITÉRIO DE INSERÇÃO NO PORTAL AMIL ---
             guia_valida_numerica = df['Nº Guia Solicitação (TISS)'].str.isnumeric()
