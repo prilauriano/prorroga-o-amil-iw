@@ -54,8 +54,13 @@ if arquivo_enviado is not None:
             df['Nr. Matricula'] = df['Nr. Matricula'].fillna('').astype(str).str.strip()
             df['Pessoa Resp Aut'] = df['Pessoa Resp Aut'].fillna('Não Atribuído').astype(str).str.strip()
             
+            # --- VALIDAÇÃO: SÓ ACEITA NÚMEROS NA GUIA TISS ---
+            # .str.isnumeric() retorna True apenas se a célula contiver somente números
+            guia_valida_numerica = df['Nº Guia Solicitação (TISS)'].str.isnumeric()
+            
             # --- CRITÉRIO DE INSERÇÃO NO PORTAL AMIL ---
-            df['Inserido_Amil'] = (df['Nº Guia Solicitação (TISS)'] != '') | (df['Senha Aprovação'] != '') | (df['Status Aut Orç'] == 'Autorizado')
+            # Considera inserido se a guia for estritamente numérica OU se tiver Senha de Aprovação OU se estiver Autorizado
+            df['Inserido_Amil'] = (guia_valida_numerica) | (df['Senha Aprovação'] != '') | (df['Status Aut Orç'] == 'Autorizado')
             
             total_pacientes = len(df)
             inseridos = df['Inserido_Amil'].sum()
