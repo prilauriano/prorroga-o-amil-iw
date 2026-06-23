@@ -2,20 +2,23 @@ import streamlit as st
 import pandas as pd
 import re
 
-# Configuração da página e design do cabeçalho
-st.set_page_config(page_title="Painel Prorrogação Amil", page_icon="📊", layout="wide")
+# Configuração da página institucional da Solar Cuidados
+st.set_page_config(page_title="Dashboard Prorrogações | Solar Cuidados", page_icon="☀️", layout="wide")
 
+# Estilização Personalizada com a Identidade Visual da Solar Cuidados (Laranja e Azul Noturno)
 st.markdown("""
     <style>
-    .main-title { font-size:32px; font-weight:bold; color:#0b2545; margin-bottom:5px; }
+    .main-title { font-size:34px; font-weight:bold; color:#0b2545; margin-bottom:2px; }
+    .solar-accent { color: #f37021; }
     .subtitle { font-size:16px; color:#555555; margin-bottom:25px; }
+    div[data-testid="stMetricValue"] { color: #0b2545; font-weight: bold; }
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<p class="main-title">📊 Super Monitor de Imputação e Auditoria — Amil IW</p>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Análise avançada cruzando relatórios de prorrogação, pendências setoriais e segmentação ID/AD.</p>', unsafe_allow_html=True)
+st.markdown('<p class="main-title">☀️ Dashboard Prorrogações <span class="solar-accent">Solar Cuidados</span></p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Gestão estratégica de prorrogações Amil, pendências multidisciplinares e segmentação de internações (ID/AD).</p>', unsafe_allow_html=True)
 
-# --- ÁREA DE UPLOAD DAS DUAS PLANILHAS ---
+# --- ÁREA DE UPLOAD DAS PLANILHAS ---
 col_up1, col_up2 = st.columns(2)
 with col_up1:
     arquivo_amil = st.file_uploader("1️⃣ Arrasta a planilha PRINCIPAL do IW aqui (.csv)", type=["csv", "xlsx"])
@@ -69,12 +72,13 @@ if arquivo_amil is not None:
 
             df['Valor a Cobrar'] = df['Valor a Cobrar'].apply(converter_moeda_br)
             
-            # Classificação Inteligente ID vs AD
+            # Classificação Inteligente ID vs AD - Padrão de Cuidados Solar
             df['Tipo_Atendimento'] = df['Classific. Atendimento'].apply(
-                lambda x: 'ID (Internação)' if x.startswith('ID') else ('AD (Atenção)' if x.startswith('AD') else 'Outros')
+                lambda x: 'ID (Internação Domiciliar)' if x.startswith('ID') else ('AD (Atenção Domiciliar)' if x.startswith('AD') else 'Outros')
             )
             
-            # --- PROCESSAMENTO DA SEGUNDA PLANILHA (SETORES), SE ENVIADA ---
+            # --- PROCESSAMENTO DA SEGUNDA PLANILHA (SETORES) ---
+            df_s = None
             setores_agrupados = None
             if arquivo_setores is not None:
                 try:
@@ -90,22 +94,20 @@ if arquivo_amil is not None:
                     df_s['Nº Atendimento'] = df_s['Nº Atendimento'].astype(str).str.strip()
                     df_s['Grupo Especialidade'] = df_s['Grupo Especialidade'].fillna('Outros').astype(str).str.strip()
                     
-                    # Agrupa gerando a lista de setores pendentes por atendimento (PROCV)
                     setores_agrupados = df_s.groupby('Nº Atendimento')['Grupo Especialidade'].apply(
                         lambda x: ', '.join(sorted(set(x)))
                     ).reset_index()
                     setores_agrupados.columns = ['Nr. Atendimento', 'Especialidades Pendentes']
                 except Exception as e_setor:
-                    st.warning(f"⚠️ Não foi possível ler a planilha de setores. Prosseguindo sem o cruzamento. Erro: {e_setor}")
+                    st.warning(f"⚠️ Não foi possível ler a planilha de setores. Erro: {e_setor}")
 
-            # Cruzamento dos dados (Merge das Especialidades)
             if setores_agrupados is not None:
                 df = pd.merge(df, setores_agrupados, on='Nr. Atendimento', how='left')
-                df['Especialidades Pendentes'] = df['Especialidades Pendentes'].fillna('Não especificado na Planilha 2')
+                df['Especialidades Pendentes'] = df['Especialidades Pendentes'].fillna('Nenhuma pendência técnica apontada')
             else:
-                df['Especialidades Pendentes'] = 'Carregue a Planilha 2 para ver as especialidades'
+                df['Especialidades Pendentes'] = 'Carregue a planilha 2 para abrir os setores'
 
-            # Métricas Básicas
+            # Métricas Gerais
             guia_valida_numerica = df['Nº Guia Solicitação (TISS)'].str.isnumeric()
             df['Inserido_Amil'] = (guia_valida_numerica) | (df['Senha Aprovação'] != '') | (df['Status Aut Orç'] == 'Autorizado')
             
@@ -113,11 +115,9 @@ if arquivo_amil is not None:
             inseridos = df['Inserido_Amil'].sum()
             faltam = total_pacientes - inseridos
             
-            # Filtragem e Ordenação por Maior Valor
             df_prontuario = df[df['Status Aut Orç'] == 'Prontuário Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
             df_ops = df[df['Status Aut Orç'] == 'OPS Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
             
-            # Auditoria de Erros de Cadastro
             tam_matriculas = df['Nr. Matricula'].str.len()
             erro_matricula = (tam_matriculas == 0) | (~tam_matriculas.isin([8, 9]))
             erro_vinculo = df['Nr. Atendimento'].isna() | df['ID Orçam.'].isna()
@@ -125,31 +125,60 @@ if arquivo_amil is not None:
             pacientes_com_erro = df[df['Possui_Erro'] == True][['Nr. Atendimento', 'Nome do Paciente', 'Nr. Matricula', 'Pessoa Resp Aut']]
             pacientes_com_erro.columns = ['Nº Atendimento', 'Nome do Paciente', 'Matrícula Informada', 'Colaborador']
 
-            # --- CRIAÇÃO DAS ABAS DO PAINEL ---
-            aba1, aba2, aba3, aba4 = st.tabs(["📈 Geral & Produtividade", "🏥 Segmentação ID / AD", "📋 Listas de Prorrogaração (Maiores Valores)", "🚨 Alertas de Erro"])
+            # --- ABAS INTEGRADAS COM DESIGN SOLAR ---
+            aba1, aba2, aba3, aba4, aba5 = st.tabs(["🧡 Resumo Geral Solar", "👤 Gestão de Equipe", "🏥 Segmentação ID / AD", "📋 Listas de Prorrogação", "🚨 Alertas de Erro"])
             
             with aba1:
-                st.markdown("### 📌 Resumo Operacional de Prorrogação")
+                st.markdown("### 📌 Resumo Operacional da Operação")
                 card1, card2, card3, card4 = st.columns(4)
                 card1.metric("Total de Pacientes (IW)", f"{total_pacientes}")
                 card2.metric("✅ Inseridos no Portal", f"{inseridos}")
-                card3.metric("⏳ Pendentes (Faltam)", f"{faltam}")
+                card3.metric("⏳ Pendentes Total", f"{faltam}")
                 card4.metric("🚨 Erros de Cadastro", f"{len(pacientes_com_erro)}")
                 
-                st.markdown("---")
-                st.markdown("### 🏆 Ranking de Produtividade dos Colaboradores")
-                g_col1, g_col2 = st.columns([4, 6])
-                with g_col1:
-                    ranking = df['Pessoa Resp Aut'].value_counts().reset_index()
-                    ranking.columns = ['Colaborador', 'Pacientes Atribuídos']
-                    st.dataframe(ranking, use_container_width=True, hide_index=True)
-                with g_col2:
-                    st.bar_chart(ranking.set_index('Colaborador'), y='Pacientes Atribuídos', color='#2a9d8f')
+                if df_s is not None:
+                    st.markdown("---")
+                    st.markdown("### 🏢 Pendências de Relatório por Setor Multidisciplinar")
+                    
+                    df_amil_v = df[['Nr. Atendimento', 'Valor a Cobrar']].copy()
+                    df_setores_valores = pd.merge(df_s, df_amil_v, left_on='Nº Atendimento', right_on='Nr. Atendimento', how='left')
+                    analise_setores = df_setores_valores.groupby('Grupo Especialidade').agg(
+                        Quantidade=('ID Pront.', 'count'),
+                        Valor_Total=('Valor a Cobrar', 'sum')
+                    ).reset_index()
+                    
+                    set_col1, set_col2 = st.columns(2)
+                    with set_col1:
+                        st.write("**Quantidade de Relatórios Pendentes por Setor**")
+                        st.bar_chart(analise_setores.set_index('Grupo Especialidade')[['Quantidade']], color='#0b2545')
+                    with set_col2:
+                        st.write("**Impacto Financeiro Bloqueado por Setor (R$)**")
+                        st.bar_chart(analise_setores.set_index('Grupo Especialidade')[['Valor_Total']], color='#f37021')
+                    
+                    st.markdown("#### 📋 Detalhamento dos Setores")
+                    st.dataframe(analise_setores.rename(columns={'Grupo Especialidade': 'Setor / Especialidade', 'Quantidade': 'Qtd Pendências', 'Valor_Total': 'Valor Represado (R$)'}).style.format({'Valor Represado (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
             with aba2:
-                st.markdown("### 🏥 Análise do Modelo de Atendimento (ID vs AD)")
+                st.markdown("### 👤 Produtividade e Demandas por Colaborador")
                 
-                # Agrupando dados para os gráficos
+                df_prod = df.groupby('Pessoa Resp Aut').agg(
+                    Imputados=('Inserido_Amil', 'sum'),
+                    Faltam=('Inserido_Amil', lambda x: len(x) - x.sum()),
+                    Total=('Inserido_Amil', 'count')
+                ).reset_index()
+                df_prod.columns = ['Colaborador', 'Imputados (Concluídos)', 'Faltam Terminar', 'Total sob Custódia']
+                
+                prod_graf_col, prod_tab_col = st.columns([6, 4])
+                with prod_graf_col:
+                    st.write("**Gráfico de Carga de Trabalho Solar (Faltam vs Concluídos)**")
+                    # Cores customizadas da Solar para o gráfico empilhado
+                    st.bar_chart(df_prod.set_index('Colaborador')[['Imputados (Concluídos)', 'Faltam Terminar']], color=['#f37021', '#0b2545'])
+                with prod_tab_col:
+                    st.write("**Dados Consolidados**")
+                    st.dataframe(df_prod, use_container_width=True, hide_index=True)
+
+            with aba3:
+                st.markdown("### 🏥 Análise do Modelo de Atendimento Solar (ID vs AD)")
                 df_id_ad = df.groupby('Tipo_Atendimento').agg(
                     Quantidade=('Nome do Paciente', 'count'),
                     Valor_Total=('Valor a Cobrar', 'sum')
@@ -158,49 +187,35 @@ if arquivo_amil is not None:
                 id_col1, id_col2 = st.columns(2)
                 with id_col1:
                     st.write("**Quantidade de Pacientes por Tipo**")
-                    st.bar_chart(df_id_ad.set_index('Tipo_Atendimento')[['Quantidade']], color='#134074')
+                    st.bar_chart(df_id_ad.set_index('Tipo_Atendimento')[['Quantidade']], color='#0b2545')
                 with id_col2:
-                    st.write("**Volume de Prorrogação Represado (R$) por Tipo**")
-                    st.bar_chart(df_id_ad.set_index('Tipo_Atendimento')[['Valor_Total']], color='#e76f51')
-                
-                st.markdown("#### 📋 Lista Resumida de Pacientes ID / AD")
-                df_exibir_id_ad = df[['Nr. Atendimento', 'Nome do Paciente', 'Tipo_Atendimento', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
-                df_exibir_id_ad.columns = ['Nº Atendimento', 'Nome do Paciente', 'Tipo Atendimento', 'Responsável', 'Valor (R$)']
-                st.dataframe(df_exibir_id_ad.style.format({'Valor (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
+                    st.write("**Volume de Prorrogas Represado (R$) por Tipo**")
+                    st.bar_chart(df_id_ad.set_index('Tipo_Atendimento')[['Valor_Total']], color='#f37021')
 
-            with aba3:
+            with aba4:
                 st.markdown("### 📋 Prorrogações Ordenadas pelos Maiores Valores")
-                st.caption("Foque nas linhas do topo para liberar as prorrogações de maiores montantes primeiro.")
-                
                 tab_p, tab_o = st.tabs(["📄 Prontuário Pendente", "🏢 OPS Pendente"])
-                
                 with tab_p:
                     st.markdown(f"**Total de Processos: {len(df_prontuario)} | Montante: R$ {df_prontuario['Valor a Cobrar'].sum():,.2f}**")
                     df_p_view = df_prontuario[['Nr. Atendimento', 'Nome do Paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
                     df_p_view.columns = ['Nº Atendimento', 'Nome do Paciente', 'Tipo', 'Especialidades Pendentes (Planilha 2)', 'Responsável', 'Valor a Cobrar (R$)']
                     st.dataframe(df_p_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
-                    
                 with tab_o:
                     st.markdown(f"**Total de Processos: {len(df_ops)} | Montante: R$ {df_ops['Valor a Cobrar'].sum():,.2f}**")
                     df_o_view = df_ops[['Nr. Atendimento', 'Nome do Paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
                     df_o_view.columns = ['Nº Atendimento', 'Nome do Paciente', 'Tipo', 'Especialidades Pendentes (Planilha 2)', 'Responsável', 'Valor a Cobrar (R$)']
                     st.dataframe(df_o_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
-            with aba4:
+            with aba5:
                 st.markdown("### 🚨 Cadastros Incompletos / Erros no IW")
-                st.write("Corrija estes campos no IW para evitar glosas automáticas de prorrogação no portal:")
                 st.dataframe(pacientes_com_erro, use_container_width=True, hide_index=True)
                 
                 if len(pacientes_com_erro) > 0:
                     csv_erros = pacientes_com_erro.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="📥 Baixar Planilha de Erros para Ajuste",
-                        data=csv_erros,
-                        file_name="correcoes_iw.csv",
-                        mime="text/csv",
-                    )
+                    st.download_button(label="📥 Baixar Planilha de Erros", data=csv_erros, file_name="correcoes_iw.csv", mime="text/csv")
                     
     except Exception as e:
-        st.error(f"Erro ao processar os arquivos. Certifique-se de que usou os relatórios corretos. Detalhe: {e}")
+        st.error(f"Erro ao processar os arquivos. Detalhe técnico: {e}")
 else:
-    st.info("💡 Tudo pronto! Aguardando o upload da planilha principal (1) do IW para ativar o painel de prorrogações...")
+    st.info("💡 Tudo pronto! Aguardando o upload da planilha do IW para ativar o Dashboard Prorrogações Solar Cuidados...")
+
