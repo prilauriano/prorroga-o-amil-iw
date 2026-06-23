@@ -51,4 +51,8 @@ if arquivo_enviado is not None:
             df['Nº Guia Solicitação (TISS)'] = df['Nº Guia Solicitação (TISS)'].fillna('').astype(str).str.strip()
             df['Senha Aprovação'] = df['Senha Aprovação'].fillna('').astype(str).str.strip()
             df['Status Aut Orç'] = df['Status Aut Orç'].fillna('').astype(str).str.strip()
-            df['Nr. Matricula'] = df
+            df['Nr. Matricula'] = df['Nr. Matricula'].fillna('').astype(str).str.strip()
+            df['Pessoa Resp Aut'] = df['Pessoa Resp Aut'].fillna('Não Atribuído').astype(str).str.strip()
+            
+            # Garante que a coluna de Valor a Cobrar está tratada como número puro
+            if df
