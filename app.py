@@ -22,14 +22,11 @@ if arquivo_enviado is not None:
         # --- LEITURA BLINDADA DO ARQUIVO (COM TRATAMENTO DE ENCODING) ---
         if arquivo_enviado.name.endswith('.csv'):
             try:
-                # Tenta ler em UTF-8 primeiro
                 df = pd.read_csv(arquivo_enviado, sep=';', encoding='utf-8')
             except UnicodeDecodeError:
-                # Se falhar por causa de acentos, tenta com ISO-8859-1
                 arquivo_enviado.seek(0)
                 df = pd.read_csv(arquivo_enviado, sep=';', encoding='iso-8859-1')
             
-            # Se ler tudo em uma única coluna por causa do separador, tenta com vírgula
             if df.shape[1] <= 1:
                 arquivo_enviado.seek(0)
                 try:
@@ -64,14 +61,14 @@ if arquivo_enviado is not None:
             inseridos = df['Inserido_Amil'].sum()
             faltam = total_pacientes - inseridos
             
-            # --- AUDITORIA DE ERROS ---
+            # --- AUDITORIA DE ERROS CRÍTICOS (CALIBRADA) ---
             tam_matriculas = df['Nr. Matricula'].str.len()
-            # Considera erro se estiver zerado ou fora do padrão de 8 ou 9 dígitos da Amil
+            # Erro se matrícula estiver totalmente vazia ou fora do padrão (8 ou 9 dígitos)
             erro_matricula = (tam_matriculas == 0) | (~tam_matriculas.isin([8, 9]))
             
-            # Checagem segura das colunas de data
+            # Validação flexível de datas (considera erro apenas se o campo estiver nulo ou contiver apenas espaços)
             if 'Data Início' in df.columns and 'Data Fim' in df.columns:
-                erro_datas = df['Data Início'].isna() | df['Data Fim'].isna()
+                erro_datas = df['Data Início'].isna() | (df['Data Início'].astype(str).str.strip() == '') | df['Data Fim'].isna() | (df['Data Fim'].astype(str).str.strip() == '')
             else:
                 erro_datas = False
                 
@@ -100,13 +97,24 @@ if arquivo_enviado is not None:
                 st.caption("Quantidade de processos sob a responsabilidade de cada colaborador:")
                 ranking = df['Pessoa Resp Aut'].value_counts().reset_index()
                 ranking.columns = ['Colaborador', 'Pacientes Atribuídos']
-                # Ajustado para o parâmetro correto 'use_container_width'
                 st.dataframe(ranking, use_container_width=True, hide_index=True)
                     
             with col_direita:
                 st.markdown("### 🚨 Lista de Erros para Correção Rápida")
-                st.caption("Pacientes com inconformidades detectadas no relatório:")
-                # Ajustado para o parâmetro correto 'use_container_width'
+                st.caption("Pacientes com inconformidades reais detectadas no relatório:")
                 st.dataframe(pacientes_com_erro, use_container_width=True, hide_index=True)
                 
-                # Botão para baixar planilha de
+                # Botão para baixar planilha de erros
+                if len(pacientes_com_erro) > 0:
+                    csv_erros = pacientes_com_erro.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Baixar Planilha de Erros para Cobrar a Equipe",
+                        data=csv_erros,
+                        file_name="erros_faturamento_amil.csv",
+                        mime="text/csv",
+                    )
+                    
+    except Exception as e:
+        st.error(f"Erro inesperado ao processar o arquivo. Detalhe técnico: {e}")
+else:
+    st.info("💡 Tudo pronto! Aguardando você arrastar ou selecionar a planilha do IW acima para calcular...")
