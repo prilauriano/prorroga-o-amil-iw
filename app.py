@@ -5,8 +5,70 @@ import re
 # Configuração padrão da página
 st.set_page_config(page_title="Dashboard Prorrogações Amil", page_icon="📊", layout="wide")
 
-st.title("📊 Dashboard Prorrogações Amil")
-st.caption("Análise operacional de prorrogações Amil IW, pendências multidisciplinares e volumetria ID/AD.")
+# CSS Avançado Dinâmico: Detecta e adapta o layout para Modo Claro e Modo Escuro nativamente
+st.markdown("""
+    <style>
+    /* ==========================================================================
+       1. REGRAS GERAIS ADAPTÁVEIS (MUDANÇA AUTOMÁTICA DE TEMA)
+       ========================================================================== */
+       
+    /* SÓ SE O USUÁRIO ESTIVER NO MODO CLARO (LIGHT MODE) */
+    @media (prefers-color-scheme: light) {
+        .main-title { color: #4A148C !important; } /* Roxo Escuro */
+        .subtitle { color: #555555 !important; }
+        
+        div[data-testid="stMetric"] {
+            background-color: #F8F9FA !important;
+            border: 1px solid #EAEAEA !important;
+        }
+        div[data-testid="stMetricLabel"] { color: #4A148C !important; }
+        div[data-testid="stMetricValue"] { color: #1A1A1A !important; }
+    }
+
+    /* SÓ SE O USUÁRIO ESTIVER NO MODO ESCURO (DARK MODE) */
+    @media (prefers-color-scheme: dark) {
+        .main-title { color: #BA68C8 !important; } /* Roxo Claro / Neon */
+        .subtitle { color: #B0BEC5 !important; }
+        
+        div[data-testid="stMetric"] {
+            background-color: #1E1E1E !important;
+            border: 1px solid #333333 !important;
+        }
+        div[data-testid="stMetricLabel"] { color: #BA68C8 !important; }
+        div[data-testid="stMetricValue"] { color: #FFFFFF !important; }
+    }
+    
+    /* ==========================================================================
+       2. AJUSTES ESTRUTURAIS FIXOS (FONTES E ALINHAMENTOS)
+       ========================================================================== */
+    .main-title { 
+        font-size: 32px; 
+        font-weight: 800; 
+        margin-bottom: 2px;
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    }
+    .solar-accent { 
+        color: #FFB300 !important; /* Amarelo Solar Fixo */
+    }
+    .subtitle { 
+        font-size: 15px; 
+        margin-bottom: 25px; 
+    }
+    div[data-testid="stMetricLabel"] {
+        font-weight: 700 !important;
+        font-size: 13px !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px;
+    }
+    div[data-testid="stMetricValue"] { 
+        font-weight: 700 !important; 
+        font-size: 28px !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+st.markdown('<p class="main-title">📊 Dashboard Prorrogações <span class="solar-accent">Solar Cuidados</span></p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Análise operacional de prorrogações Amil IW, pendências multidisciplinares e volumetria ID/AD.</p>', unsafe_allow_html=True)
 
 # --- ÁREA DE UPLOAD DAS DUAS PLANILHAS ---
 col_up1, col_up2 = st.columns(2)
@@ -116,7 +178,7 @@ if arquivo_amil is not None:
             pacientes_com_erro.columns = ['Nº Atendimento', 'Nome do Paciente', 'Matrícula Informada', 'Colaborador']
 
             # --- CONFIGURAÇÃO DAS ABAS ---
-            aba1, aba2, aba3, aba4, aba5 = st.tabs(["⭐ Resumo Geral", "👤 Gestão de Equipe", "🏥 Segmentação ID / AD", "📋 Listas de Prorrogação", "🚨 Alertas de Erro"])
+            aba1, aba2, aba3, aba4, aba5 = st.tabs(["⭐ Resumo Geral", "👤 Gestão de Equipe", "🏥 Segmentação ID / AD", "📋 Listas de Prorrogaração", "🚨 Alertas de Erro"])
             
             with aba1:
                 st.subheader("📌 Indicadores Operacionais")
@@ -150,9 +212,8 @@ if arquivo_amil is not None:
                         st.bar_chart(graf_setor_val, x='Grupo Especialidade', y='Valor_Total')
                     
                     st.markdown("#### 📋 Detalhes Financeiros dos Setores")
-                    # LINHA CORRIGIDA: Sem quebras ou cortes de texto
                     df_setores_renomeado = analise_setores.rename(columns={'Grupo Especialidade': 'Setor / Especialidade', 'Quantidade': 'Qtd Pendências', 'Valor_Total': 'Valor Represado (R$)'})
-                    st.dataframe(df_setores_renomeado.style.format({'Valor Represado (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
+                    st.dataframe(df_setores_renomeado.style.format({'Valor Represado (R$)' : 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
             with aba2:
                 st.subheader("👤 Produtividade e Demandas por Colaborador")
@@ -174,7 +235,7 @@ if arquivo_amil is not None:
                     st.dataframe(graf_colab, use_container_width=True, hide_index=True)
 
             with aba3:
-                st.subheader("🏥 Análise do Modelo de Atendimento (ID vs AD)")
+                st.subheader("🏥 Análise do Modelo de Atendimento Solar (ID vs AD)")
                 df_id_ad = df.groupby('Tipo_Atendimento').agg(
                     Quantidade=('Nome do Paciente', 'count'),
                     Valor_Total=('Valor a Cobrar', 'sum')
@@ -214,4 +275,3 @@ if arquivo_amil is not None:
         st.error(f"Erro ao processar os arquivos. Detalhe técnico: {e}")
 else:
     st.info("💡 Tudo pronto! Aguardando o upload da planilha do IW para ativar o Dashboard...")
-
