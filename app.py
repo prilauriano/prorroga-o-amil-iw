@@ -1,98 +1,89 @@
 import streamlit as st
 import pandas as pd
 
-# Configuração da página e design do Dashboard
-st.set_page_config(page_title="Gestão de Faturamento Amil", page_icon="📊", layout="wide")
+# Configuração da página e design do cabeçalho
+st.set_page_config(page_title="Painel Faturamento Amil", page_icon="📊", layout="wide")
 
-# Estilização customizada para deixar o visual profissional
 st.markdown("""
     <style>
-    .main-title { font-size: 28px; font-weight: bold; color: #0b2545; margin-bottom: 5px; }
-    .subtitle { font-size: 14px; color: #555555; margin-bottom: 25px; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid #134074; }
+    .main-title { font-size:32px; font-weight:bold; color:#0b2545; margin-bottom:5px; }
+    .subtitle { font-size:16px; color:#555555; margin-bottom:25px; }
     </style>
-""", unsafe_type=True)
+""", unsafe_allow_html=True)
 
-st.markdown('<p class="main-title">📊 Painel de Controle e Auditoria — Portal Amil</p>', unsafe_type=True)
-st.markdown('<p class="subtitle">Faça o upload do relatório bruto extraído do sistema IW para consolidar a produção e auditar inconsistências instantaneamente.</p>', unsafe_type=True)
+st.markdown('<p class="main-title">📊 Monitor de Imputação e Auditoria — Portal Amil</p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Carregue o relatório do IW para atualizar o painel de faturamento instantaneamente.</p>', unsafe_allow_html=True)
 
-# Área Interativa de Upload de Arquivo
-arquivo_iw = st.file_uploader("Arraste ou clique para anexar a sua planilha do IW (.csv)", type=["csv"])
+# 1. Botão de fazer o upload do arquivo
+arquivo_enviado = st.file_uploader("Clique no botão abaixo ou arraste o arquivo do IW aqui", type=["csv", "xlsx"])
 
-if arquivo_iw is not None:
+if arquivo_enviado is not None:
     try:
-        # Lendo o arquivo do IW configurado com separador ponto e vírgula
-        df = pd.read_csv(arquivo_iw, sep=';', encoding='utf-8')
+        # Identificar se é CSV ou Excel e ler com o separador correto do IW (ponto e vírgula)
+        if arquivo_enviado.name.endswith('.csv'):
+            df = pd.read_csv(arquivo_enviado, sep=';', encoding='utf-8')
+        else:
+            df = pd.read_excel(arquivo_enviado)
         
-        # --- REGRAS DE NEGÓCIO ---
-        # Identificação de pacientes inseridos/autorizados no portal
-        df['No_Portal'] = df['Nº Guia Solicitação (TISS)'].notna() | df['Senha Aprovação'].notna() | (df['Status Aut Orç'] == 'Autorizado')
+        # --- REGRAS DE NEGÓCIO E MAPEAMENTO ---
+        # Verificar se o paciente já foi inserido no Portal Amil
+        df['Inserido_Amil'] = df['Nº Guia Solicitação (TISS)'].notna() | df['Senha Aprovação'].notna() | (df['Status Aut Orç'] == 'Autorizado')
         
         total_pacientes = len(df)
-        inseridos = df['No_Portal'].sum()
+        inseridos = df['Inserido_Amil'].sum()
         faltam = total_pacientes - inseridos
         
-        # --- AUDITORIA DE ERROS E INCONSISTÊNCIAS ---
-        # Verificação do tamanho da matrícula (Padrão Amil de 8 ou 9 dígitos)
-        df['Tam_Matricula'] = df['Nr. Matricula'].astype(str).str.strip().str.len()
-        erro_matricula = ~df['Tam_Matricula'].isin([8, 9])
+        # Regras de Auditoria de Erros (Garantindo que calcula o tamanho da matrícula da forma correta)
+        tam_matriculas = df['Nr. Matricula'].astype(str).str.strip().str.len()
+        erro_matricula = ~tam_matriculas.isin([8, 9]) 
         
-        # Verificação de ausência de datas de vigência
         erro_datas = df['Data Início'].isna() | df['Data Fim'].isna()
-        
-        # Verificação de falta de vínculos críticos do IW
         erro_vinculo = df['Nr. Atendimento'].isna() | df['ID Orçam.'].isna()
         
-        # Consolidação dos erros encontrados
         df['Possui_Erro'] = erro_matricula | erro_datas | erro_vinculo
-        pacientes_com_erro = df[df['Possui_Erro'] == True][['Nr. Atendimento', 'Nome do Paciente', 'Nr. Matricula', 'Pessoa Resp Aut']]
-        pacientes_com_erro.columns = ['Nº Atendimento', 'Nome do Paciente', 'Matrícula', 'Responsável']
         
-        # --- EXIBIÇÃO DO PAINEL DE INDICADORES (KPIs) ---
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Total no Relatório (IW)", f"{total_pacientes}")
-        with col2:
-            st.metric("✅ Inseridos no Portal", f"{inseridos}", delta=f"+{inseridos} Concluídos")
-        with col3:
-            st.metric("⏳ Pendentes (Faltam)", f"{faltam}", delta=f"-{inseridos} Restantes", delta_color="inverse")
-        with col4:
-            st.metric("🚨 Cadastros Incorretos", f"{len(pacientes_com_erro)}")
-            
+        # Filtrar tabela contendo apenas os erros críticos
+        pacientes_com_erro = df[df['Possui_Erro'] == True][['Nr. Atendimento', 'Nome do Paciente', 'Nr. Matricula', 'Pessoa Resp Aut']]
+        pacientes_com_erro.columns = ['Nº Atendimento', 'Nome do Paciente', 'Matrícula Informada', 'Colaborador Responsável']
+        
+        # --- CARDS VISUAIS DE DADOS (KPIs) ---
+        card1, card2, card3, card4 = st.columns(4)
+        card1.metric("Total de Pacientes (IW)", f"{total_pacientes}")
+        card2.metric("✅ Inseridos no Portal Amil", f"{inseridos}", delta=f"+{inseridos}")
+        card3.metric("⏳ Pendentes (Faltam)", f"{faltam}", delta=f"-{inseridos}", delta_color="inverse")
+        card4.metric("🚨 Cadastros com Inconsistência", f"{len(pacientes_com_erro)}")
+        
         st.markdown("---")
         
-        # Divisão da tela em duas seções principais
-        col_esq, col_dir = st.columns([4, 6])
+        # --- DIVISÃO DA TELA EM COLUNAS ---
+        col_esquerda, col_direita = st.columns([4, 6])
         
-        with col_esq:
-            st.markdown("### 🏆 Produtividade da Equipe")
-            st.write("Volume total de processos sob a responsabilidade de cada colaborador:")
+        with col_esquerda:
+            st.markdown("### 🏆 Ranking de Produtividade")
+            st.caption("Quantidade de processos sob a responsabilidade de cada colaborador:")
             if 'Pessoa Resp Aut' in df.columns:
-                produtividade = df['Pessoa Resp Aut'].value_counts().reset_index()
-                produtividade.columns = ['Colaborador', 'Pacientes Atribuídos']
-                st.dataframe(produtividade, use_container_width=True, hide_index=True)
+                ranking = df['Pessoa Resp Aut'].value_counts().reset_index()
+                ranking.columns = ['Colaborador', 'Pacientes Atribuídos']
+                st.dataframe(ranking, use_column_width=True, hide_index=True)
             else:
-                st.warning("Coluna de responsáveis não localizada no arquivo.")
+                st.warning("Coluna 'Pessoa Resp Aut' não encontrada.")
                 
-        with col_dir:
-            st.markdown("### 🔍 Lista de Erros Detectados")
-            st.write("Corrija estes cadastros no IW para evitar glosas ou atrasos na Amil:")
+        with col_direita:
+            st.markdown("### 🚨 Lista de Erros para Correção Rápida")
+            st.caption("Pacientes identificados com matrículas fora do padrão, falta de vigência ou sem ID de orçamento:")
+            st.dataframe(pacientes_com_erro, use_column_width=True, hide_index=True)
             
+            # Botão de clicar para baixar a lista de erros em Excel
             if len(pacientes_com_erro) > 0:
-                st.dataframe(pacientes_com_erro, use_container_width=True, hide_index=True)
-                
-                # Botão para baixar planilha só com as falhas para repassar para a equipe
                 csv_erros = pacientes_com_erro.to_csv(index=False).encode('utf-8')
                 st.download_button(
-                    label="📥 Exportar Lista de Erros para Correção (.csv)",
+                    label="📥 Baixar Planilha de Erros para Cobrar a Equipe",
                     data=csv_erros,
-                    file_name="correcoes_pendentes_amil.csv",
+                    file_name="erros_faturamento_amil.csv",
                     mime="text/csv",
                 )
-            else:
-                st.success("Sensacional! Nenhuma inconsistência de cadastro foi detectada no lote atual.")
                 
     except Exception as e:
-        st.error(f"Erro ao ler o arquivo. Certifique-se de que exportou o relatório correto do IW. Detalhes técnicos: {e}")
+        st.error(f"Erro ao processar o arquivo. Detalhe técnico: {e}")
 else:
-    st.info("Aguardando o upload da planilha para atualizar os dados...")
+    st.info("💡 Tudo pronto! Aguardando você arrastar ou selecionar a planilha do IW acima para calcular...")
