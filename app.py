@@ -2,92 +2,13 @@ import streamlit as st
 import pandas as pd
 import re
 
-# 1. Configuração da página e injeção do tema limpo (Fundo Branco Forçado)
-st.set_page_config(page_title="Dashboard Prorrogações | Solar Cuidados", page_icon="☀️", layout="wide")
+# Configuração padrão da página
+st.set_page_config(page_title="Dashboard Prorrogações Amil", page_icon="📊", layout="wide")
 
-# CSS Avançado para higienizar o layout e aplicar a identidade Roxo/Amarelo sem falhas
-st.markdown("""
-    <style>
-    /* Força o fundo branco e a cor do texto padrão em todo o app */
-    html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
-        background-color: #FFFFFF !important;
-        color: #262626 !important;
-    }
-    
-    /* Cabeçalho Limpo */
-    .main-title { 
-        font-size: 30px; 
-        font-weight: 800; 
-        color: #4A148C !important; /* Roxo principal */
-        margin-bottom: 2px; 
-        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    }
-    .solar-accent { 
-        color: #FFB300 !important; /* Amarelo Solar */
-    }
-    .subtitle { 
-        font-size: 15px; 
-        color: #666666 !important; 
-        margin-bottom: 30px; 
-    }
-    
-    /* Customização das Abas (Tabs) para não sumirem no fundo */
-    button[data-testid="stMarkdownContainer"] p {
-        font-weight: 600 !important;
-    }
-    .stTabs [data-baseweb="tab"] {
-        color: #666666 !important;
-        background-color: #F8F9FA !important;
-        border: 1px solid #E0E0E0 !important;
-        border-radius: 4px 4px 0px 0px !important;
-        padding: 8px 16px !important;
-        margin-right: 4px !important;
-    }
-    .stTabs [data-baseweb="tab"][aria-selected="true"] {
-        background-color: #4A148C !important; /* Roxo na aba ativa */
-        color: #FFFFFF !important;
-        border-color: #4A148C !important;
-    }
-    
-    /* Estilização Minimalista dos Cards de Métrica */
-    div[data-testid="stMetric"] {
-        background-color: #FDFDFD !important;
-        border: 1px solid #EAEAEA !important;
-        border-radius: 6px !important;
-        padding: 12px 18px !important;
-        box-shadow: 0px 2px 4px rgba(0,0,0,0.02) !important;
-    }
-    div[data-testid="stMetricLabel"] {
-        color: #4A148C !important; 
-        font-weight: 700 !important;
-        font-size: 13px !important;
-        text-transform: uppercase !important;
-        letter-spacing: 0.5px;
-    }
-    div[data-testid="stMetricValue"] { 
-        color: #1A1A1A !important; 
-        font-weight: 700 !important; 
-        font-size: 28px !important;
-    }
-    
-    /* Ajuste de tabelas e caixas de texto */
-    .stDataFrame {
-        border: 1px solid #EAEAEA !important;
-        border-radius: 6px !important;
-        background-color: #FFFFFF !important;
-    }
-    div[data-testid="stAlert"] {
-        background-color: #FFFDE7 !important;
-        color: #5D4037 !important;
-        border: 1px solid #FFF59D !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
+st.title("📊 Dashboard Prorrogações Amil")
+st.caption("Análise operacional de prorrogações Amil IW, pendências multidisciplinares e volumetria ID/AD.")
 
-st.markdown('<p class="main-title">☀️ Dashboard Prorrogações <span class="solar-accent">Solar Cuidados</span></p>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Acompanhamento de metas Amil IW, pendências multidisciplinares e volumetria ID/AD.</p>', unsafe_allow_html=True)
-
-# --- ÁREA DE UPLOAD DAS PLANILHAS ---
+# --- ÁREA DE UPLOAD DAS DUAS PLANILHAS ---
 col_up1, col_up2 = st.columns(2)
 with col_up1:
     arquivo_amil = st.file_uploader("1️⃣ Arrasta a planilha PRINCIPAL do IW aqui (.csv)", type=["csv", "xlsx"])
@@ -194,11 +115,11 @@ if arquivo_amil is not None:
             pacientes_com_erro = df[df['Possui_Erro'] == True][['Nr. Atendimento', 'Nome do Paciente', 'Nr. Matricula', 'Pessoa Resp Aut']]
             pacientes_com_erro.columns = ['Nº Atendimento', 'Nome do Paciente', 'Matrícula Informada', 'Colaborador']
 
-            # --- ABAS DETALHADAS ---
-            aba1, aba2, aba3, aba4, aba5 = st.tabs(["⭐ Resumo Geral", "👤 Gestão de Equipe", "🏥 Segmentação ID / AD", "📋 Listas de Prorrogaração", "🚨 Alertas de Erro"])
+            # --- CONFIGURAÇÃO DAS ABAS (MANTIDO CONFORME PEDIDO) ---
+            aba1, aba2, aba3, aba4, aba5 = st.tabs(["⭐ Resumo Geral", "👤 Gestão de Equipe", "🏥 Segmentação ID / AD", "📋 Listas de Prorrogação", "🚨 Alertas de Erro"])
             
             with aba1:
-                st.markdown("### 📌 Resumo Operacional")
+                st.subheader("📌 Indicadores Operacionais")
                 card1, card2, card3, card4 = st.columns(4)
                 card1.metric("Total de Pacientes (IW)", f"{total_pacientes}")
                 card2.metric("✅ Inseridos no Portal", f"{inseridos}")
@@ -207,7 +128,7 @@ if arquivo_amil is not None:
                 
                 if df_s is not None:
                     st.markdown("---")
-                    st.markdown("### 🏢 Pendências de Relatório por Setor Multidisciplinar")
+                    st.subheader("🏢 Pendências de Relatório por Setor Multidisciplinar")
                     
                     df_amil_v = df[['Nr. Atendimento', 'Valor a Cobrar']].copy()
                     df_setores_valores = pd.merge(df_s, df_amil_v, left_on='Nº Atendimento', right_on='Nr. Atendimento', how='left')
@@ -219,16 +140,16 @@ if arquivo_amil is not None:
                     set_col1, set_col2 = st.columns(2)
                     with set_col1:
                         st.write("**Quantidade de Relatórios Pendentes por Setor**")
-                        st.bar_chart(analise_setores.set_index('Grupo Especialidade')[['Quantidade']], color='#4A148C')
+                        st.bar_chart(analise_setores.set_index('Grupo Especialidade')[['Quantidade']])
                     with set_col2:
                         st.write("**Impacto Financeiro Bloqueado por Setor (R$)**")
-                        st.bar_chart(analise_setores.set_index('Grupo Especialidade')[['Valor_Total']], color='#FFB300')
+                        st.bar_chart(analise_setores.set_index('Grupo Especialidade')[['Valor_Total']])
                     
                     st.markdown("#### 📋 Detalhes Financeiros dos Setores")
                     st.dataframe(analise_setores.rename(columns={'Grupo Especialidade': 'Setor / Especialidade', 'Quantidade': 'Qtd Pendências', 'Valor_Total': 'Valor Represado (R$)'}).style.format({'Valor Represado (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
             with aba2:
-                st.markdown("### 👤 Produtividade e Demandas por Colaborador")
+                st.subheader("👤 Produtividade e Demandas por Colaborador")
                 
                 df_prod = df.groupby('Pessoa Resp Aut').agg(
                     Imputados=('Inserido_Amil', 'sum'),
@@ -240,13 +161,13 @@ if arquivo_amil is not None:
                 prod_graf_col, prod_tab_col = st.columns([6, 4])
                 with prod_graf_col:
                     st.write("**Gráfico de Carga de Trabalho (Concluídos vs Faltam)**")
-                    st.bar_chart(df_prod.set_index('Colaborador')[['Imputados (Concluídos)', 'Faltam Terminar']], color=['#4A148C', '#FFB300'])
+                    st.bar_chart(df_prod.set_index('Colaborador')[['Imputados (Concluídos)', 'Faltam Terminar']])
                 with prod_tab_col:
                     st.write("**Dados Consolidados da Equipe**")
                     st.dataframe(df_prod, use_container_width=True, hide_index=True)
 
             with aba3:
-                st.markdown("### 🏥 Análise do Modelo de Atendimento Solar (ID vs AD)")
+                st.subheader("🏥 Análise do Modelo de Atendimento (ID vs AD)")
                 df_id_ad = df.groupby('Tipo_Atendimento').agg(
                     Quantidade=('Nome do Paciente', 'count'),
                     Valor_Total=('Valor a Cobrar', 'sum')
@@ -255,13 +176,13 @@ if arquivo_amil is not None:
                 id_col1, id_col2 = st.columns(2)
                 with id_col1:
                     st.write("**Quantidade de Pacientes por Tipo**")
-                    st.bar_chart(df_id_ad.set_index('Tipo_Atendimento')[['Quantidade']], color='#4A148C')
+                    st.bar_chart(df_id_ad.set_index('Tipo_Atendimento')[['Quantidade']])
                 with id_col2:
                     st.write("**Volume de Prorrogações Represado (R$) por Tipo**")
-                    st.bar_chart(df_id_ad.set_index('Tipo_Atendimento')[['Valor_Total']], color='#FFB300')
+                    st.bar_chart(df_id_ad.set_index('Tipo_Atendimento')[['Valor_Total']])
 
             with aba4:
-                st.markdown("### 📋 Prorrogações Ordenadas pelos Maiores Valores")
+                st.subheader("📋 Prorrogações Ordenadas pelos Maiores Valores")
                 tab_p, tab_o = st.tabs(["📄 Prontuário Pendente", "🏢 OPS Pendente"])
                 with tab_p:
                     st.markdown(f"**Total de Processos: {len(df_prontuario)} | Montante: R$ {df_prontuario['Valor a Cobrar'].sum():,.2f}**")
@@ -275,7 +196,7 @@ if arquivo_amil is not None:
                     st.dataframe(df_o_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
             with aba5:
-                st.markdown("### 🚨 Cadastros Incompletos / Erros no IW")
+                st.subheader("🚨 Cadastros Incompletos / Erros no IW")
                 st.dataframe(pacientes_com_erro, use_container_width=True, hide_index=True)
                 
                 if len(pacientes_com_erro) > 0:
@@ -286,3 +207,4 @@ if arquivo_amil is not None:
         st.error(f"Erro ao processar os arquivos. Detalhe técnico: {e}")
 else:
     st.info("💡 Tudo pronto! Aguardando o upload da planilha do IW para ativar o Dashboard...")
+
