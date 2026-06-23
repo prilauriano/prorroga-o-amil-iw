@@ -2,51 +2,90 @@ import streamlit as st
 import pandas as pd
 import re
 
-# Configuração da página (Nome que aparece na aba do navegador)
+# 1. Configuração da página e injeção do tema limpo (Fundo Branco Forçado)
 st.set_page_config(page_title="Dashboard Prorrogações | Solar Cuidados", page_icon="☀️", layout="wide")
 
-# Força o Fundo Branco, Títulos em Roxo, Destaques em Amarelo/Laranja e remove o visual escuro
+# CSS Avançado para higienizar o layout e aplicar a identidade Roxo/Amarelo sem falhas
 st.markdown("""
     <style>
-    /* Configuração global de cores de fundo e texto */
-    .stApp {
+    /* Força o fundo branco e a cor do texto padrão em todo o app */
+    html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
         background-color: #FFFFFF !important;
-        color: #333333 !important;
+        color: #262626 !important;
     }
+    
+    /* Cabeçalho Limpo */
     .main-title { 
-        font-size:34px; 
-        font-weight:bold; 
-        color:#4A148C !important; /* Roxo Escuro */
-        margin-bottom:2px; 
+        font-size: 30px; 
+        font-weight: 800; 
+        color: #4A148C !important; /* Roxo principal */
+        margin-bottom: 2px; 
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
     }
     .solar-accent { 
         color: #FFB300 !important; /* Amarelo Solar */
     }
     .subtitle { 
-        font-size:16px; 
-        color:#666666 !important; 
-        margin-bottom:25px; 
+        font-size: 15px; 
+        color: #666666 !important; 
+        margin-bottom: 30px; 
     }
-    /* Estilização dos Cards de Métrica */
-    div[data-testid="stMetric"] {
-        background-color: #F9F9F9 !important;
-        border: 1px solid #E0E0E0 !important;
-        border-radius: 8px !important;
-        padding: 10px 15px !important;
-    }
-    div[data-testid="stMetricLabel"] {
-        color: #4A148C !important; /* Título dos cards em Roxo */
+    
+    /* Customização das Abas (Tabs) para não sumirem no fundo */
+    button[data-testid="stMarkdownContainer"] p {
         font-weight: 600 !important;
     }
+    .stTabs [data-baseweb="tab"] {
+        color: #666666 !important;
+        background-color: #F8F9FA !important;
+        border: 1px solid #E0E0E0 !important;
+        border-radius: 4px 4px 0px 0px !important;
+        padding: 8px 16px !important;
+        margin-right: 4px !important;
+    }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background-color: #4A148C !important; /* Roxo na aba ativa */
+        color: #FFFFFF !important;
+        border-color: #4A148C !important;
+    }
+    
+    /* Estilização Minimalista dos Cards de Métrica */
+    div[data-testid="stMetric"] {
+        background-color: #FDFDFD !important;
+        border: 1px solid #EAEAEA !important;
+        border-radius: 6px !important;
+        padding: 12px 18px !important;
+        box-shadow: 0px 2px 4px rgba(0,0,0,0.02) !important;
+    }
+    div[data-testid="stMetricLabel"] {
+        color: #4A148C !important; 
+        font-weight: 700 !important;
+        font-size: 13px !important;
+        text-transform: uppercase !important;
+        letter-spacing: 0.5px;
+    }
     div[data-testid="stMetricValue"] { 
-        color: #333333 !important; 
-        font-weight: bold !important; 
+        color: #1A1A1A !important; 
+        font-weight: 700 !important; 
+        font-size: 28px !important;
+    }
+    
+    /* Ajuste de tabelas e caixas de texto */
+    .stDataFrame {
+        border: 1px solid #EAEAEA !important;
+        border-radius: 6px !important;
+        background-color: #FFFFFF !important;
+    }
+    div[data-testid="stAlert"] {
+        background-color: #FFFDE7 !important;
+        color: #5D4037 !important;
+        border: 1px solid #FFF59D !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">☀️ Dashboard Prorrogações <span class="solar-accent">Solar Cuidados</span></p>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Gestão estratégica de prorrogações Amil, pendências multidisciplinares e segmentação de internações (ID/AD).</p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Acompanhamento de metas Amil IW, pendências multidisciplinares e volumetria ID/AD.</p>', unsafe_allow_html=True)
 
 # --- ÁREA DE UPLOAD DAS PLANILHAS ---
 col_up1, col_up2 = st.columns(2)
@@ -81,7 +120,7 @@ if arquivo_amil is not None:
         colunas_faltantes = [col for col in colunas_obrigatorias if col not in df.columns]
         
         if colunas_faltantes:
-            st.error(f"❌ A planilha 1 está faltando as colunas essenciais: {colunas_faltantes}.")
+            st.error(f"❌ A planilha está faltando as colunas essenciais: {colunas_faltantes}.")
         else:
             # Tratamento inicial de texto e nulos
             for c in ['Nº Guia Solicitação (TISS)', 'Senha Aprovação', 'Status Aut Orç', 'Nr. Matricula', 'Pessoa Resp Aut', 'Classific. Atendimento']:
@@ -137,7 +176,7 @@ if arquivo_amil is not None:
             else:
                 df['Especialidades Pendentes'] = 'Carregue a planilha 2 para abrir os setores'
 
-            # Métricas Gerais
+            # Métricas Gerais de Imputação
             guia_valida_numerica = df['Nº Guia Solicitação (TISS)'].str.isnumeric()
             df['Inserido_Amil'] = (guia_valida_numerica) | (df['Senha Aprovação'] != '') | (df['Status Aut Orç'] == 'Autorizado')
             
@@ -155,11 +194,11 @@ if arquivo_amil is not None:
             pacientes_com_erro = df[df['Possui_Erro'] == True][['Nr. Atendimento', 'Nome do Paciente', 'Nr. Matricula', 'Pessoa Resp Aut']]
             pacientes_com_erro.columns = ['Nº Atendimento', 'Nome do Paciente', 'Matrícula Informada', 'Colaborador']
 
-            # --- ABAS INTEGRADAS COM DESIGN CLEAN (ROXO E AMARELO) ---
-            aba1, aba2, aba3, aba4, aba5 = st.tabs(["⭐ Resumo Geral", "👤 Gestão de Equipe", "🏥 Segmentação ID / AD", "📋 Listas de Prorrogação", "🚨 Alertas de Erro"])
+            # --- ABAS DETALHADAS ---
+            aba1, aba2, aba3, aba4, aba5 = st.tabs(["⭐ Resumo Geral", "👤 Gestão de Equipe", "🏥 Segmentação ID / AD", "📋 Listas de Prorrogaração", "🚨 Alertas de Erro"])
             
             with aba1:
-                st.markdown("### 📌 Resumo Operacional da Operação")
+                st.markdown("### 📌 Resumo Operacional")
                 card1, card2, card3, card4 = st.columns(4)
                 card1.metric("Total de Pacientes (IW)", f"{total_pacientes}")
                 card2.metric("✅ Inseridos no Portal", f"{inseridos}")
@@ -180,14 +219,12 @@ if arquivo_amil is not None:
                     set_col1, set_col2 = st.columns(2)
                     with set_col1:
                         st.write("**Quantidade de Relatórios Pendentes por Setor**")
-                        # Gráfico em Roxo
                         st.bar_chart(analise_setores.set_index('Grupo Especialidade')[['Quantidade']], color='#4A148C')
                     with set_col2:
                         st.write("**Impacto Financeiro Bloqueado por Setor (R$)**")
-                        # Gráfico em Amarelo
                         st.bar_chart(analise_setores.set_index('Grupo Especialidade')[['Valor_Total']], color='#FFB300')
                     
-                    st.markdown("#### 📋 Detalhamento dos Setores")
+                    st.markdown("#### 📋 Detalhes Financeiros dos Setores")
                     st.dataframe(analise_setores.rename(columns={'Grupo Especialidade': 'Setor / Especialidade', 'Quantidade': 'Qtd Pendências', 'Valor_Total': 'Valor Represado (R$)'}).style.format({'Valor Represado (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
             with aba2:
@@ -202,11 +239,10 @@ if arquivo_amil is not None:
                 
                 prod_graf_col, prod_tab_col = st.columns([6, 4])
                 with prod_graf_col:
-                    st.write("**Gráfico de Carga de Trabalho (Faltam vs Concluídos)**")
-                    # Duas cores limpas: Roxo para concluídos, Amarelo para pendentes
+                    st.write("**Gráfico de Carga de Trabalho (Concluídos vs Faltam)**")
                     st.bar_chart(df_prod.set_index('Colaborador')[['Imputados (Concluídos)', 'Faltam Terminar']], color=['#4A148C', '#FFB300'])
                 with prod_tab_col:
-                    st.write("**Dados Consolidados**")
+                    st.write("**Dados Consolidados da Equipe**")
                     st.dataframe(df_prod, use_container_width=True, hide_index=True)
 
             with aba3:
@@ -221,7 +257,7 @@ if arquivo_amil is not None:
                     st.write("**Quantidade de Pacientes por Tipo**")
                     st.bar_chart(df_id_ad.set_index('Tipo_Atendimento')[['Quantidade']], color='#4A148C')
                 with id_col2:
-                    st.write("**Volume de Prorrogas Represado (R$) por Tipo**")
+                    st.write("**Volume de Prorrogações Represado (R$) por Tipo**")
                     st.bar_chart(df_id_ad.set_index('Tipo_Atendimento')[['Valor_Total']], color='#FFB300')
 
             with aba4:
@@ -249,4 +285,4 @@ if arquivo_amil is not None:
     except Exception as e:
         st.error(f"Erro ao processar os arquivos. Detalhe técnico: {e}")
 else:
-    st.info("💡 Tudo pronto! Aguardando o upload da planilha do IW para ativar o Dashboard Prorrogações Solar Cuidados...")
+    st.info("💡 Tudo pronto! Aguardando o upload da planilha do IW para ativar o Dashboard...")
