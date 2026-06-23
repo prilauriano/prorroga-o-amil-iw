@@ -19,7 +19,7 @@ arquivo_enviado = st.file_uploader("Clique no botão abaixo ou abra o arquivo do
 
 if arquivo_enviado is not None:
     try:
-        # --- LEITURA BLINDADA DO ARQUIVO ---
+        # --- LEITURA BLINDADA DO ARQUIVO (COM TRATAMENTO DE ENCODING) ---
         if arquivo_enviado.name.endswith('.csv'):
             try:
                 df = pd.read_csv(arquivo_enviado, sep=';', encoding='utf-8')
@@ -47,8 +47,89 @@ if arquivo_enviado is not None:
         if colunas_faltantes:
             st.error(f"❌ O arquivo enviado está faltando as seguintes colunas essenciais: {colunas_faltantes}.")
         else:
-            # Tratamento de valores nulos/vazios
+            # Tratamento de valores nulos/vazios para evitar erros de leitura
             df['Nº Guia Solicitação (TISS)'] = df['Nº Guia Solicitação (TISS)'].fillna('').astype(str).str.strip()
             df['Senha Aprovação'] = df['Senha Aprovação'].fillna('').astype(str).str.strip()
             df['Status Aut Orç'] = df['Status Aut Orç'].fillna('').astype(str).str.strip()
-            df['Nr. Matricula'] = df['Nr. Matricula'].fillna('').astype(str).str.strip
+            df['Nr. Matricula'] = df['Nr. Matricula'].fillna('').astype(str).str.strip()
+            df['Pessoa Resp Aut'] = df['Pessoa Resp Aut'].fillna('Não Atribuído').astype(str).str.strip()
+            
+            # --- CRITÉRIO DE INSERÇÃO NO PORTAL AMIL ---
+            df['Inserido_Amil'] = (df['Nº Guia Solicitação (TISS)'] != '') | (df['Senha Aprovação'] != '') | (df['Status Aut Orç'] == 'Autorizado')
+            
+            total_pacientes = len(df)
+            inseridos = df['Inserido_Amil'].sum()
+            faltam = total_pacientes - inseridos
+            
+            # --- AUDITORIA DE ERROS CRÍTICOS ---
+            tam_matriculas = df['Nr. Matricula'].str.len()
+            erro_matricula = (tam_matriculas == 0) | (~tam_matriculas.isin([8, 9]))
+            
+            # Checagem segura das colunas de data
+            if 'Data Início' in df.columns and 'Data Fim' in df.columns:
+                erro_datas = df['Data Início'].isna() | (df['Data Início'].astype(str).str.strip() == '') | df['Data Fim'].isna() | (df['Data Fim'].astype(str).str.strip() == '')
+            else:
+                erro_datas = False
+                
+            erro_vinculo = df['Nr. Atendimento'].isna() | df['ID Orçam.'].isna()
+            df['Possui_Erro'] = erro_matricula | erro_datas | erro_vinculo
+            
+            # Tabela de erros filtrada
+            pacientes_com_erro = df[df['Possui_Erro'] == True][['Nr. Atendimento', 'Nome do Paciente', 'Nr. Matricula', 'Pessoa Resp Aut']]
+            pacientes_com_erro.columns = ['Nº Atendimento', 'Nome do Paciente', 'Matrícula Informada', 'Colaborador Responsável']
+            
+            # --- CARDS VISUAIS DE DADOS (KPIs) ---
+            card1, card2, card3, card4 = st.columns(4)
+            card1.metric("Total de Pacientes (IW)", f"{total_pacientes}")
+            card2.metric("✅ Inseridos no Portal Amil", f"{inseridos}")
+            card3.metric("⏳ Pendentes (Faltam)", f"{faltam}")
+            card4.metric("🚨 Cadastros com Inconsistência", f"{len(pacientes_com_erro)}")
+            
+            st.markdown("---")
+            
+            # --- SEÇÃO DE GRÁFICOS INTERATIVOS ---
+            st.markdown("### 📈 Análise Gráfica em Tempo Real")
+            graf_col1, graf_col2 = st.columns(2)
+            
+            with graf_col1:
+                st.write("**Progresso Geral da Operação**")
+                dados_progresso = pd.DataFrame({
+                    'Status': ['✅ Inseridos', '⏳ Pendentes'],
+                    'Quantidade': [inseridos, faltam]
+                })
+                st.bar_chart(dados_progresso.set_index('Status'), y='Quantidade', color='#134074')
+            
+            with graf_col2:
+                st.write("**Produtividade (Pacientes sob Responsabilidade)**")
+                ranking_grafico = df['Pessoa Resp Aut'].value_counts().reset_index()
+                ranking_grafico.columns = ['Colaborador', 'Pacientes']
+                st.bar_chart(ranking_grafico.set_index('Colaborador'), y='Pacientes', color='#2a9d8f')
+            
+            st.markdown("---")
+            
+            # --- TABELAS DETALHADAS ---
+            col_esquerda, col_direita = st.columns([4, 6])
+            
+            with col_esquerda:
+                st.markdown("### 🏆 Ranking de Produtividade")
+                ranking = df['Pessoa Resp Aut'].value_counts().reset_index()
+                ranking.columns = ['Colaborador', 'Pacientes Atribuídos']
+                st.dataframe(ranking, use_container_width=True, hide_index=True)
+                    
+            with col_direita:
+                st.markdown("### 🚨 Detalhes dos Erros Detectados")
+                st.dataframe(pacientes_com_erro, use_container_width=True, hide_index=True)
+                
+                if len(pacientes_com_erro) > 0:
+                    csv_erros = pacientes_com_erro.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Baixar Planilha de Erros para Cobrar a Equipe",
+                        data=csv_erros,
+                        file_name="erros_faturamento_amil.csv",
+                        mime="text/csv",
+                    )
+                    
+    except Exception as e:
+        st.error(f"Erro inesperado ao processar o arquivo. Detalhe técnico: {e}")
+else:
+    st.info("💡 Tudo pronto! Aguardando você arrastar ou selecionar a planilha do IW acima para calcular...")
