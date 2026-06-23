@@ -12,14 +12,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">📊 Monitor de Imputação e Auditoria — Portal Amil</p>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Carregue o relatório do IW para atualizar o painel de faturamento instantaneamente.</p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Carregue o relatório do IW para atualizar o painel de faturamento e os gráficos instantaneamente.</p>', unsafe_allow_html=True)
 
 # 1. Botão de fazer o upload do arquivo
 arquivo_enviado = st.file_uploader("Clique no botão abaixo ou abra o arquivo do IW aqui", type=["csv", "xlsx"])
 
 if arquivo_enviado is not None:
     try:
-        # --- LEITURA BLINDADA DO ARQUIVO (COM TRATAMENTO DE ENCODING) ---
+        # --- LEITURA BLINDADA DO ARQUIVO ---
         if arquivo_enviado.name.endswith('.csv'):
             try:
                 df = pd.read_csv(arquivo_enviado, sep=';', encoding='utf-8')
@@ -45,76 +45,10 @@ if arquivo_enviado is not None:
         colunas_faltantes = [col for col in colunas_obrigatorias if col not in df.columns]
         
         if colunas_faltantes:
-            st.error(f"❌ O arquivo enviado está faltando as seguintes colunas essenciais: {colunas_faltantes}. Verifique se exportou o relatório correto do IW.")
+            st.error(f"❌ O arquivo enviado está faltando as seguintes colunas essenciais: {colunas_faltantes}.")
         else:
-            # Tratamento de valores nulos/vazios para evitar erros de leitura
+            # Tratamento de valores nulos/vazios
             df['Nº Guia Solicitação (TISS)'] = df['Nº Guia Solicitação (TISS)'].fillna('').astype(str).str.strip()
             df['Senha Aprovação'] = df['Senha Aprovação'].fillna('').astype(str).str.strip()
             df['Status Aut Orç'] = df['Status Aut Orç'].fillna('').astype(str).str.strip()
-            df['Nr. Matricula'] = df['Nr. Matricula'].fillna('').astype(str).str.strip()
-            df['Pessoa Resp Aut'] = df['Pessoa Resp Aut'].fillna('Não Atribuído').astype(str).str.strip()
-            
-            # --- CRITÉRIO DE INSERÇÃO NO PORTAL AMIL ---
-            df['Inserido_Amil'] = (df['Nº Guia Solicitação (TISS)'] != '') | (df['Senha Aprovação'] != '') | (df['Status Aut Orç'] == 'Autorizado')
-            
-            total_pacientes = len(df)
-            inseridos = df['Inserido_Amil'].sum()
-            faltam = total_pacientes - inseridos
-            
-            # --- AUDITORIA DE ERROS CRÍTICOS (CALIBRADA) ---
-            tam_matriculas = df['Nr. Matricula'].str.len()
-            # Erro se matrícula estiver totalmente vazia ou fora do padrão (8 ou 9 dígitos)
-            erro_matricula = (tam_matriculas == 0) | (~tam_matriculas.isin([8, 9]))
-            
-            # Validação flexível de datas (considera erro apenas se o campo estiver nulo ou contiver apenas espaços)
-            if 'Data Início' in df.columns and 'Data Fim' in df.columns:
-                erro_datas = df['Data Início'].isna() | (df['Data Início'].astype(str).str.strip() == '') | df['Data Fim'].isna() | (df['Data Fim'].astype(str).str.strip() == '')
-            else:
-                erro_datas = False
-                
-            erro_vinculo = df['Nr. Atendimento'].isna() | df['ID Orçam.'].isna()
-            
-            df['Possui_Erro'] = erro_matricula | erro_datas | erro_vinculo
-            
-            # Tabela de erros filtrada
-            pacientes_com_erro = df[df['Possui_Erro'] == True][['Nr. Atendimento', 'Nome do Paciente', 'Nr. Matricula', 'Pessoa Resp Aut']]
-            pacientes_com_erro.columns = ['Nº Atendimento', 'Nome do Paciente', 'Matrícula Informada', 'Colaborador Responsável']
-            
-            # --- CARDS VISUAIS DE DADOS (KPIs) ---
-            card1, card2, card3, card4 = st.columns(4)
-            card1.metric("Total de Pacientes (IW)", f"{total_pacientes}")
-            card2.metric("✅ Inseridos no Portal Amil", f"{inseridos}")
-            card3.metric("⏳ Pendentes (Faltam)", f"{faltam}")
-            card4.metric("🚨 Cadastros com Inconsistência", f"{len(pacientes_com_erro)}")
-            
-            st.markdown("---")
-            
-            # --- DIVISÃO DA TELA EM COLUNAS ---
-            col_esquerda, col_direita = st.columns([4, 6])
-            
-            with col_esquerda:
-                st.markdown("### 🏆 Ranking de Produtividade")
-                st.caption("Quantidade de processos sob a responsabilidade de cada colaborador:")
-                ranking = df['Pessoa Resp Aut'].value_counts().reset_index()
-                ranking.columns = ['Colaborador', 'Pacientes Atribuídos']
-                st.dataframe(ranking, use_container_width=True, hide_index=True)
-                    
-            with col_direita:
-                st.markdown("### 🚨 Lista de Erros para Correção Rápida")
-                st.caption("Pacientes com inconformidades reais detectadas no relatório:")
-                st.dataframe(pacientes_com_erro, use_container_width=True, hide_index=True)
-                
-                # Botão para baixar planilha de erros
-                if len(pacientes_com_erro) > 0:
-                    csv_erros = pacientes_com_erro.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="📥 Baixar Planilha de Erros para Cobrar a Equipe",
-                        data=csv_erros,
-                        file_name="erros_faturamento_amil.csv",
-                        mime="text/csv",
-                    )
-                    
-    except Exception as e:
-        st.error(f"Erro inesperado ao processar o arquivo. Detalhe técnico: {e}")
-else:
-    st.info("💡 Tudo pronto! Aguardando você arrastar ou selecionar a planilha do IW acima para calcular...")
+            df['Nr. Matricula'] = df['Nr. Matricula'].fillna('').astype(str).str.strip
