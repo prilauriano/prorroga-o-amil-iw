@@ -19,12 +19,24 @@ arquivo_enviado = st.file_uploader("Clique no botão abaixo ou abra o arquivo do
 
 if arquivo_enviado is not None:
     try:
-        # --- LEITURA BLINDADA DO ARQUIVO ---
+        # --- LEITURA BLINDADA DO ARQUIVO (COM TRATAMENTO DE ENCODING) ---
         if arquivo_enviado.name.endswith('.csv'):
-            df = pd.read_csv(arquivo_enviado, sep=';', encoding='utf-8')
+            try:
+                # Tenta ler em UTF-8 primeiro
+                df = pd.read_csv(arquivo_enviado, sep=';', encoding='utf-8')
+            except UnicodeDecodeError:
+                # Se falhar por causa de acentos (como o seu erro), tenta com ISO-8859-1
+                arquivo_enviado.seek(0)
+                df = pd.read_csv(arquivo_enviado, sep=';', encoding='iso-8859-1')
+            
+            # Se ler tudo em uma única coluna por causa do separador, tenta com vírgula
             if df.shape[1] <= 1:
                 arquivo_enviado.seek(0)
-                df = pd.read_csv(arquivo_enviado, sep=',', encoding='utf-8')
+                try:
+                    df = pd.read_csv(arquivo_enviado, sep=',', encoding='utf-8')
+                except UnicodeDecodeError:
+                    arquivo_enviado.seek(0)
+                    df = pd.read_csv(arquivo_enviado, sep=',', encoding='iso-8859-1')
         else:
             df = pd.read_excel(arquivo_enviado)
         
@@ -57,7 +69,7 @@ if arquivo_enviado is not None:
             # Considera erro se estiver zerado ou fora do padrão de 8 ou 9 dígitos da Amil
             erro_matricula = (tam_matriculas == 0) | (~tam_matriculas.isin([8, 9]))
             
-            # Checagem segura das colunas de data (só valida se as colunas existirem com esses nomes exatos)
+            # Checagem segura das colunas de data
             if 'Data Início' in df.columns and 'Data Fim' in df.columns:
                 erro_datas = df['Data Início'].isna() | df['Data Fim'].isna()
             else:
