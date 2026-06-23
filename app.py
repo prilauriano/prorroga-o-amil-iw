@@ -3,7 +3,7 @@ import pandas as pd
 import re
 
 # Configuração da página e design do cabeçalho
-st.set_page_config(page_title="Painel Faturamento Amil", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Painel Prorrogação Amil", page_icon="📊", layout="wide")
 
 st.markdown("""
     <style>
@@ -13,7 +13,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown('<p class="main-title">📊 Super Monitor de Imputação e Auditoria — Amil IW</p>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Análise avançada cruzando relatórios de faturamento, pendências setoriais e segmentação ID/AD.</p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Análise avançada cruzando relatórios de prorrogação, pendências setoriais e segmentação ID/AD.</p>', unsafe_allow_html=True)
 
 # --- ÁREA DE UPLOAD DAS DUAS PLANILHAS ---
 col_up1, col_up2 = st.columns(2)
@@ -113,7 +113,7 @@ if arquivo_amil is not None:
             inseridos = df['Inserido_Amil'].sum()
             faltam = total_pacientes - inseridos
             
-            # Filtragem e Ordenação por Maior Valor (Regra Pedida!)
+            # Filtragem e Ordenação por Maior Valor
             df_prontuario = df[df['Status Aut Orç'] == 'Prontuário Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
             df_ops = df[df['Status Aut Orç'] == 'OPS Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
             
@@ -126,10 +126,10 @@ if arquivo_amil is not None:
             pacientes_com_erro.columns = ['Nº Atendimento', 'Nome do Paciente', 'Matrícula Informada', 'Colaborador']
 
             # --- CRIAÇÃO DAS ABAS DO PAINEL ---
-            aba1, aba2, aba3, aba4 = st.tabs(["📈 Geral & Produtividade", "🏥 Segmentação ID / AD", "📋 Listas de Pendências (Maiores Valores)", "🚨 Alertas de Erro"])
+            aba1, aba2, aba3, aba4 = st.tabs(["📈 Geral & Produtividade", "🏥 Segmentação ID / AD", "📋 Listas de Prorrogaração (Maiores Valores)", "🚨 Alertas de Erro"])
             
             with aba1:
-                st.markdown("### 📌 Resumo Operacional")
+                st.markdown("### 📌 Resumo Operacional de Prorrogação")
                 card1, card2, card3, card4 = st.columns(4)
                 card1.metric("Total de Pacientes (IW)", f"{total_pacientes}")
                 card2.metric("✅ Inseridos no Portal", f"{inseridos}")
@@ -160,7 +160,7 @@ if arquivo_amil is not None:
                     st.write("**Quantidade de Pacientes por Tipo**")
                     st.bar_chart(df_id_ad.set_index('Tipo_Atendimento')[['Quantidade']], color='#134074')
                 with id_col2:
-                    st.write("**Volume Financeiro Represado (R$) por Tipo**")
+                    st.write("**Volume de Prorrogação Represado (R$) por Tipo**")
                     st.bar_chart(df_id_ad.set_index('Tipo_Atendimento')[['Valor_Total']], color='#e76f51')
                 
                 st.markdown("#### 📋 Lista Resumida de Pacientes ID / AD")
@@ -169,8 +169,8 @@ if arquivo_amil is not None:
                 st.dataframe(df_exibir_id_ad.style.format({'Valor (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
             with aba3:
-                st.markdown("### 📋 Pendências Ordenadas pelos Maiores Valores")
-                st.caption("Foque nas linhas do topo para liberar os maiores montantes financeiros primeiro.")
+                st.markdown("### 📋 Prorrogações Ordenadas pelos Maiores Valores")
+                st.caption("Foque nas linhas do topo para liberar as prorrogações de maiores montantes primeiro.")
                 
                 tab_p, tab_o = st.tabs(["📄 Prontuário Pendente", "🏢 OPS Pendente"])
                 
@@ -188,7 +188,7 @@ if arquivo_amil is not None:
 
             with aba4:
                 st.markdown("### 🚨 Cadastros Incompletos / Erros no IW")
-                st.write("Corrija estes campos no IW para evitar glosas automáticas no portal:")
+                st.write("Corrija estes campos no IW para evitar glosas automáticas de prorrogação no portal:")
                 st.dataframe(pacientes_com_erro, use_container_width=True, hide_index=True)
                 
                 if len(pacientes_com_erro) > 0:
@@ -203,4 +203,4 @@ if arquivo_amil is not None:
     except Exception as e:
         st.error(f"Erro ao processar os arquivos. Certifique-se de que usou os relatórios corretos. Detalhe: {e}")
 else:
-    st.info("💡 Tudo pronto! Aguardando o upload da planilha principal (1) do IW para ativar o painel...")
+    st.info("💡 Tudo pronto! Aguardando o upload da planilha principal (1) do IW para ativar o painel de prorrogações...")
