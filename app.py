@@ -2,16 +2,46 @@ import streamlit as st
 import pandas as pd
 import re
 
-# Configuração da página institucional da Solar Cuidados
+# Configuração da página (Nome que aparece na aba do navegador)
 st.set_page_config(page_title="Dashboard Prorrogações | Solar Cuidados", page_icon="☀️", layout="wide")
 
-# Estilização Personalizada com a Identidade Visual da Solar Cuidados (Laranja e Azul Noturno)
+# Força o Fundo Branco, Títulos em Roxo, Destaques em Amarelo/Laranja e remove o visual escuro
 st.markdown("""
     <style>
-    .main-title { font-size:34px; font-weight:bold; color:#0b2545; margin-bottom:2px; }
-    .solar-accent { color: #f37021; }
-    .subtitle { font-size:16px; color:#555555; margin-bottom:25px; }
-    div[data-testid="stMetricValue"] { color: #0b2545; font-weight: bold; }
+    /* Configuração global de cores de fundo e texto */
+    .stApp {
+        background-color: #FFFFFF !important;
+        color: #333333 !important;
+    }
+    .main-title { 
+        font-size:34px; 
+        font-weight:bold; 
+        color:#4A148C !important; /* Roxo Escuro */
+        margin-bottom:2px; 
+    }
+    .solar-accent { 
+        color: #FFB300 !important; /* Amarelo Solar */
+    }
+    .subtitle { 
+        font-size:16px; 
+        color:#666666 !important; 
+        margin-bottom:25px; 
+    }
+    /* Estilização dos Cards de Métrica */
+    div[data-testid="stMetric"] {
+        background-color: #F9F9F9 !important;
+        border: 1px solid #E0E0E0 !important;
+        border-radius: 8px !important;
+        padding: 10px 15px !important;
+    }
+    div[data-testid="stMetricLabel"] {
+        color: #4A148C !important; /* Título dos cards em Roxo */
+        font-weight: 600 !important;
+    }
+    div[data-testid="stMetricValue"] { 
+        color: #333333 !important; 
+        font-weight: bold !important; 
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -72,7 +102,7 @@ if arquivo_amil is not None:
 
             df['Valor a Cobrar'] = df['Valor a Cobrar'].apply(converter_moeda_br)
             
-            # Classificação Inteligente ID vs AD - Padrão de Cuidados Solar
+            # Classificação Inteligente ID vs AD
             df['Tipo_Atendimento'] = df['Classific. Atendimento'].apply(
                 lambda x: 'ID (Internação Domiciliar)' if x.startswith('ID') else ('AD (Atenção Domiciliar)' if x.startswith('AD') else 'Outros')
             )
@@ -125,8 +155,8 @@ if arquivo_amil is not None:
             pacientes_com_erro = df[df['Possui_Erro'] == True][['Nr. Atendimento', 'Nome do Paciente', 'Nr. Matricula', 'Pessoa Resp Aut']]
             pacientes_com_erro.columns = ['Nº Atendimento', 'Nome do Paciente', 'Matrícula Informada', 'Colaborador']
 
-            # --- ABAS INTEGRADAS COM DESIGN SOLAR ---
-            aba1, aba2, aba3, aba4, aba5 = st.tabs(["🧡 Resumo Geral Solar", "👤 Gestão de Equipe", "🏥 Segmentação ID / AD", "📋 Listas de Prorrogação", "🚨 Alertas de Erro"])
+            # --- ABAS INTEGRADAS COM DESIGN CLEAN (ROXO E AMARELO) ---
+            aba1, aba2, aba3, aba4, aba5 = st.tabs(["⭐ Resumo Geral", "👤 Gestão de Equipe", "🏥 Segmentação ID / AD", "📋 Listas de Prorrogação", "🚨 Alertas de Erro"])
             
             with aba1:
                 st.markdown("### 📌 Resumo Operacional da Operação")
@@ -150,10 +180,12 @@ if arquivo_amil is not None:
                     set_col1, set_col2 = st.columns(2)
                     with set_col1:
                         st.write("**Quantidade de Relatórios Pendentes por Setor**")
-                        st.bar_chart(analise_setores.set_index('Grupo Especialidade')[['Quantidade']], color='#0b2545')
+                        # Gráfico em Roxo
+                        st.bar_chart(analise_setores.set_index('Grupo Especialidade')[['Quantidade']], color='#4A148C')
                     with set_col2:
                         st.write("**Impacto Financeiro Bloqueado por Setor (R$)**")
-                        st.bar_chart(analise_setores.set_index('Grupo Especialidade')[['Valor_Total']], color='#f37021')
+                        # Gráfico em Amarelo
+                        st.bar_chart(analise_setores.set_index('Grupo Especialidade')[['Valor_Total']], color='#FFB300')
                     
                     st.markdown("#### 📋 Detalhamento dos Setores")
                     st.dataframe(analise_setores.rename(columns={'Grupo Especialidade': 'Setor / Especialidade', 'Quantidade': 'Qtd Pendências', 'Valor_Total': 'Valor Represado (R$)'}).style.format({'Valor Represado (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
@@ -170,9 +202,9 @@ if arquivo_amil is not None:
                 
                 prod_graf_col, prod_tab_col = st.columns([6, 4])
                 with prod_graf_col:
-                    st.write("**Gráfico de Carga de Trabalho Solar (Faltam vs Concluídos)**")
-                    # Cores customizadas da Solar para o gráfico empilhado
-                    st.bar_chart(df_prod.set_index('Colaborador')[['Imputados (Concluídos)', 'Faltam Terminar']], color=['#f37021', '#0b2545'])
+                    st.write("**Gráfico de Carga de Trabalho (Faltam vs Concluídos)**")
+                    # Duas cores limpas: Roxo para concluídos, Amarelo para pendentes
+                    st.bar_chart(df_prod.set_index('Colaborador')[['Imputados (Concluídos)', 'Faltam Terminar']], color=['#4A148C', '#FFB300'])
                 with prod_tab_col:
                     st.write("**Dados Consolidados**")
                     st.dataframe(df_prod, use_container_width=True, hide_index=True)
@@ -187,10 +219,10 @@ if arquivo_amil is not None:
                 id_col1, id_col2 = st.columns(2)
                 with id_col1:
                     st.write("**Quantidade de Pacientes por Tipo**")
-                    st.bar_chart(df_id_ad.set_index('Tipo_Atendimento')[['Quantidade']], color='#0b2545')
+                    st.bar_chart(df_id_ad.set_index('Tipo_Atendimento')[['Quantidade']], color='#4A148C')
                 with id_col2:
                     st.write("**Volume de Prorrogas Represado (R$) por Tipo**")
-                    st.bar_chart(df_id_ad.set_index('Tipo_Atendimento')[['Valor_Total']], color='#f37021')
+                    st.bar_chart(df_id_ad.set_index('Tipo_Atendimento')[['Valor_Total']], color='#FFB300')
 
             with aba4:
                 st.markdown("### 📋 Prorrogações Ordenadas pelos Maiores Valores")
@@ -218,4 +250,3 @@ if arquivo_amil is not None:
         st.error(f"Erro ao processar os arquivos. Detalhe técnico: {e}")
 else:
     st.info("💡 Tudo pronto! Aguardando o upload da planilha do IW para ativar o Dashboard Prorrogações Solar Cuidados...")
-
