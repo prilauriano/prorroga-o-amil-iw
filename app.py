@@ -115,7 +115,7 @@ if arquivo_amil is not None:
             pacientes_com_erro = df[df['Possui_Erro'] == True][['Nr. Atendimento', 'Nome do Paciente', 'Nr. Matricula', 'Pessoa Resp Aut']]
             pacientes_com_erro.columns = ['Nº Atendimento', 'Nome do Paciente', 'Matrícula Informada', 'Colaborador']
 
-            # --- CONFIGURAÇÃO DAS ABAS (MANTIDO CONFORME PEDIDO) ---
+            # --- CONFIGURAÇÃO DAS ABAS ---
             aba1, aba2, aba3, aba4, aba5 = st.tabs(["⭐ Resumo Geral", "👤 Gestão de Equipe", "🏥 Segmentação ID / AD", "📋 Listas de Prorrogação", "🚨 Alertas de Erro"])
             
             with aba1:
@@ -130,81 +130,27 @@ if arquivo_amil is not None:
                     st.markdown("---")
                     st.subheader("🏢 Pendências de Relatório por Setor Multidisciplinar")
                     
+                    # Tratamento rigoroso de amarração de valores para os gráficos de setor
                     df_amil_v = df[['Nr. Atendimento', 'Valor a Cobrar']].copy()
                     df_setores_valores = pd.merge(df_s, df_amil_v, left_on='Nº Atendimento', right_on='Nr. Atendimento', how='left')
+                    
                     analise_setores = df_setores_valores.groupby('Grupo Especialidade').agg(
                         Quantidade=('ID Pront.', 'count'),
                         Valor_Total=('Valor a Cobrar', 'sum')
                     ).reset_index()
                     
+                    # Forçamos uma tabela limpa para os gráficos lerem sem duplicar nomes
+                    graf_setor_qtd = analise_setores[['Grupo Especialidade', 'Quantidade']].copy()
+                    graf_setor_val = analise_setores[['Grupo Especialidade', 'Valor_Total']].copy()
+                    
                     set_col1, set_col2 = st.columns(2)
                     with set_col1:
                         st.write("**Quantidade de Relatórios Pendentes por Setor**")
-                        st.bar_chart(analise_setores.set_index('Grupo Especialidade')[['Quantidade']])
+                        st.bar_chart(graf_setor_qtd, x='Grupo Especialidade', y='Quantidade')
                     with set_col2:
                         st.write("**Impacto Financeiro Bloqueado por Setor (R$)**")
-                        st.bar_chart(analise_setores.set_index('Grupo Especialidade')[['Valor_Total']])
+                        st.bar_chart(graf_setor_val, x='Grupo Especialidade', y='Valor_Total')
                     
                     st.markdown("#### 📋 Detalhes Financeiros dos Setores")
-                    st.dataframe(analise_setores.rename(columns={'Grupo Especialidade': 'Setor / Especialidade', 'Quantidade': 'Qtd Pendências', 'Valor_Total': 'Valor Represado (R$)'}).style.format({'Valor Represado (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
-
-            with aba2:
-                st.subheader("👤 Produtividade e Demandas por Colaborador")
-                
-                df_prod = df.groupby('Pessoa Resp Aut').agg(
-                    Imputados=('Inserido_Amil', 'sum'),
-                    Faltam=('Inserido_Amil', lambda x: len(x) - x.sum()),
-                    Total=('Inserido_Amil', 'count')
-                ).reset_index()
-                df_prod.columns = ['Colaborador', 'Imputados (Concluídos)', 'Faltam Terminar', 'Total sob Custódia']
-                
-                prod_graf_col, prod_tab_col = st.columns([6, 4])
-                with prod_graf_col:
-                    st.write("**Gráfico de Carga de Trabalho (Concluídos vs Faltam)**")
-                    st.bar_chart(df_prod.set_index('Colaborador')[['Imputados (Concluídos)', 'Faltam Terminar']])
-                with prod_tab_col:
-                    st.write("**Dados Consolidados da Equipe**")
-                    st.dataframe(df_prod, use_container_width=True, hide_index=True)
-
-            with aba3:
-                st.subheader("🏥 Análise do Modelo de Atendimento (ID vs AD)")
-                df_id_ad = df.groupby('Tipo_Atendimento').agg(
-                    Quantidade=('Nome do Paciente', 'count'),
-                    Valor_Total=('Valor a Cobrar', 'sum')
-                ).reset_index()
-                
-                id_col1, id_col2 = st.columns(2)
-                with id_col1:
-                    st.write("**Quantidade de Pacientes por Tipo**")
-                    st.bar_chart(df_id_ad.set_index('Tipo_Atendimento')[['Quantidade']])
-                with id_col2:
-                    st.write("**Volume de Prorrogações Represado (R$) por Tipo**")
-                    st.bar_chart(df_id_ad.set_index('Tipo_Atendimento')[['Valor_Total']])
-
-            with aba4:
-                st.subheader("📋 Prorrogações Ordenadas pelos Maiores Valores")
-                tab_p, tab_o = st.tabs(["📄 Prontuário Pendente", "🏢 OPS Pendente"])
-                with tab_p:
-                    st.markdown(f"**Total de Processos: {len(df_prontuario)} | Montante: R$ {df_prontuario['Valor a Cobrar'].sum():,.2f}**")
-                    df_p_view = df_prontuario[['Nr. Atendimento', 'Nome do Paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
-                    df_p_view.columns = ['Nº Atendimento', 'Nome do Paciente', 'Tipo', 'Especialidades Pendentes (Planilha 2)', 'Responsável', 'Valor a Cobrar (R$)']
-                    st.dataframe(df_p_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
-                with tab_o:
-                    st.markdown(f"**Total de Processos: {len(df_ops)} | Montante: R$ {df_ops['Valor a Cobrar'].sum():,.2f}**")
-                    df_o_view = df_ops[['Nr. Atendimento', 'Nome do Paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
-                    df_o_view.columns = ['Nº Atendimento', 'Nome do Paciente', 'Tipo', 'Especialidades Pendentes (Planilha 2)', 'Responsável', 'Valor a Cobrar (R$)']
-                    st.dataframe(df_o_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
-
-            with aba5:
-                st.subheader("🚨 Cadastros Incompletos / Erros no IW")
-                st.dataframe(pacientes_com_erro, use_container_width=True, hide_index=True)
-                
-                if len(pacientes_com_erro) > 0:
-                    csv_erros = pacientes_com_erro.to_csv(index=False).encode('utf-8')
-                    st.download_button(label="📥 Baixar Planilha de Erros", data=csv_erros, file_name="correcoes_iw.csv", mime="text/csv")
-                    
-    except Exception as e:
-        st.error(f"Erro ao processar os arquivos. Detalhe técnico: {e}")
-else:
-    st.info("💡 Tudo pronto! Aguardando o upload da planilha do IW para ativar o Dashboard...")
+                    st.dataframe(analise_setores.rename(columns={'Grupo Especialidade': 'Setor / Especialidade', '
 
