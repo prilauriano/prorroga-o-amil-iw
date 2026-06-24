@@ -6,7 +6,7 @@ import re
 # 1. Configuração de página
 st.set_page_config(page_title="Dashboard Prorrogações | Solar Cuidados", page_icon="☀️", layout="wide")
 
-# 2. Injeção da Paleta de Cores Exata do CSS do Site (Bordô, Dourado e Off-White)
+# 2. Injeção da Paleta de Cores (Bordô, Dourado e Off-White)
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
@@ -163,7 +163,7 @@ if arquivos_amil:
                 lambda x: 'ID (Internação Domiciliar)' if x.startswith('ID') else ('AD (Atenção Domiciliar)' if x.startswith('AD') else 'Outros')
             )
             
-            # --- PROCESSAMENTO SETORES ---
+            # --- PROCESSAMENTO SETORES TÉCNICOS (Opcional) ---
             df_s_consolidado = None
             setores_agrupados = None
             
@@ -219,13 +219,42 @@ if arquivos_amil:
             
             with aba1:
                 st.markdown("### 📌 Indicadores Operacionais e Financeiros")
-                # Adicionado o CARD DE VALOR FINANCEIRO AQUI
                 card1, card2, card3, card4, card5 = st.columns(5)
                 card1.metric("Total Linhas (IW)", f"{total_pacientes}")
                 card2.metric("✅ Inseridos", f"{inseridos}")
                 card3.metric("⏳ Pendentes", f"{faltam}")
                 card4.metric("🚨 Erros IW", f"{len(pacientes_com_erro)}")
                 card5.metric("💰 Represado (R$)", f"R$ {valor_total_pendente:,.2f}")
+                
+                st.markdown("---")
+                
+                # --- NOVO: GRÁFICO POR SETOR (SAD) ---
+                coluna_setor = next((col for col in df.columns if 'Setor' in col or 'Região' in col or 'SAD' in col), None)
+                
+                # Se não encontrar uma coluna exata, usa uma coluna genérica de classificação regional se existir
+                if not coluna_setor and 'Setor' in df.columns:
+                    coluna_setor = 'Setor'
+                
+                if coluna_setor:
+                    st.markdown("### 🗺️ Gráfico por Setor Regional (SAD)")
+                    
+                    df_graf_setor = df[coluna_setor].value_counts().reset_index()
+                    df_graf_setor.columns = ['Setor', 'Quantidade de Pacientes']
+                    
+                    fig_setor = px.bar(
+                        df_graf_setor,
+                        x='Setor',
+                        y='Quantidade de Pacientes',
+                        color='Setor',
+                        title="Distribuição de Demandas por Setor",
+                        text_auto=True,
+                        color_discrete_sequence=px.colors.sequential.RdBu
+                    )
+                    fig_setor.update_traces(textposition='outside')
+                    fig_setor.update_layout(showlegend=False)
+                    st.plotly_chart(fig_setor, use_container_width=True)
+                else:
+                    st.info("💡 A coluna 'Setor' não foi encontrada automaticamente na planilha principal. Se o nome da coluna for diferente, verifique o cabeçalho do arquivo.")
                 
                 if df_s_consolidado is not None:
                     st.markdown("---")
@@ -296,7 +325,6 @@ if arquivos_amil:
                 )
                 st.plotly_chart(fig_carga, use_container_width=True)
 
-            # --- ABA 3: ID vs AD (AGORA COM OS VALORES DE VOLTA!) ---
             with aba3:
                 st.markdown("### 🏥 Análise do Modelo de Atendimento Solar (ID vs AD)")
                 
@@ -305,7 +333,6 @@ if arquivos_amil:
                     Valor_Total=('Valor a Cobrar', 'sum')
                 ).reset_index()
                 
-                # ADICIONADO: Cards explícitos com os valores em Reais (R$)
                 val_id = df_id_ad.loc[df_id_ad['Tipo_Atendimento'] == 'ID (Internação Domiciliar)', 'Valor_Total'].sum()
                 val_ad = df_id_ad.loc[df_id_ad['Tipo_Atendimento'] == 'AD (Atenção Domiciliar)', 'Valor_Total'].sum()
                 
@@ -323,7 +350,6 @@ if arquivos_amil:
                     st.write("**Volume de Prorrogações Represado (R$) por Tipo**")
                     st.bar_chart(df_id_ad, x='Tipo_Atendimento', y='Valor_Total', color='#C07C20')
                 
-                # ADICIONADO: A tabela detalhada com os valores exatos de volta!
                 st.markdown("#### 📋 Detalhamento Financeiro")
                 df_id_ad_tabela = df_id_ad.rename(columns={'Tipo_Atendimento': 'Classificação', 'Quantidade': 'Qtd. de Guias/Linhas', 'Valor_Total': 'Valor Represado (R$)'})
                 st.dataframe(df_id_ad_tabela.style.format({'Valor Represado (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
