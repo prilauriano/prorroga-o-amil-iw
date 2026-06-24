@@ -6,7 +6,7 @@ import re
 # 1. Configuração de página
 st.set_page_config(page_title="Dashboard Prorrogações | Solar Cuidados", page_icon="☀️", layout="wide")
 
-# 2. Injeção da Paleta de Cores (Bordô, Dourado e Off-White)
+# 2. Injeção da Paleta de Cores Exata do CSS do Site (Bordô, Dourado e Off-White)
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
@@ -163,7 +163,7 @@ if arquivos_amil:
                 lambda x: 'ID (Internação Domiciliar)' if x.startswith('ID') else ('AD (Atenção Domiciliar)' if x.startswith('AD') else 'Outros')
             )
             
-            # --- PROCESSAMENTO SETORES TÉCNICOS (Opcional) ---
+            # --- PROCESSAMENTO SETORES TÉCNICOS ---
             df_s_consolidado = None
             setores_agrupados = None
             
@@ -206,7 +206,7 @@ if arquivos_amil:
             inseridos = df['Inserido_Amil'].sum()
             faltam = total_pacientes - inseridos
             
-            # Valor Total Pendente (Represado)
+            # Valor Total Pendente (Represado) no Geral
             valor_total_pendente = df[df['Inserido_Amil'] == False]['Valor a Cobrar'].sum()
             
             df_prontuario = df[df['Status Aut Orç'] == 'Prontuário Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
@@ -228,16 +228,12 @@ if arquivos_amil:
                 
                 st.markdown("---")
                 
-                # --- NOVO: GRÁFICO POR SETOR (SAD) ---
                 coluna_setor = next((col for col in df.columns if 'Setor' in col or 'Região' in col or 'SAD' in col), None)
-                
-                # Se não encontrar uma coluna exata, usa uma coluna genérica de classificação regional se existir
                 if not coluna_setor and 'Setor' in df.columns:
                     coluna_setor = 'Setor'
                 
                 if coluna_setor:
                     st.markdown("### 🗺️ Gráfico por Setor Regional (SAD)")
-                    
                     df_graf_setor = df[coluna_setor].value_counts().reset_index()
                     df_graf_setor.columns = ['Setor', 'Quantidade de Pacientes']
                     
@@ -253,8 +249,6 @@ if arquivos_amil:
                     fig_setor.update_traces(textposition='outside')
                     fig_setor.update_layout(showlegend=False)
                     st.plotly_chart(fig_setor, use_container_width=True)
-                else:
-                    st.info("💡 A coluna 'Setor' não foi encontrada automaticamente na planilha principal. Se o nome da coluna for diferente, verifique o cabeçalho do arquivo.")
                 
                 if df_s_consolidado is not None:
                     st.markdown("---")
@@ -325,10 +319,15 @@ if arquivos_amil:
                 )
                 st.plotly_chart(fig_carga, use_container_width=True)
 
+            # --- ABA 3: ID vs AD (CORRIGIDO PARA MOSTRAR SÓ O REPRESADO) ---
             with aba3:
                 st.markdown("### 🏥 Análise do Modelo de Atendimento Solar (ID vs AD)")
+                st.write("Valores referentes **apenas aos processos pendentes (não inseridos)**, correspondendo ao total represado.")
                 
-                df_id_ad = df.groupby('Tipo_Atendimento').agg(
+                # Filtra apenas quem NÃO foi inserido (Pendentes/Represados)
+                df_pendentes = df[df['Inserido_Amil'] == False]
+                
+                df_id_ad = df_pendentes.groupby('Tipo_Atendimento').agg(
                     Quantidade=('Nome do Paciente', 'count'),
                     Valor_Total=('Valor a Cobrar', 'sum')
                 ).reset_index()
@@ -344,13 +343,13 @@ if arquivos_amil:
                 
                 id_col1, id_col2 = st.columns(2)
                 with id_col1:
-                    st.write("**Quantidade de Pacientes por Tipo**")
+                    st.write("**Quantidade de Pacientes Pendentes por Tipo**")
                     st.bar_chart(df_id_ad, x='Tipo_Atendimento', y='Quantidade', color='#5C1220')
                 with id_col2:
                     st.write("**Volume de Prorrogações Represado (R$) por Tipo**")
                     st.bar_chart(df_id_ad, x='Tipo_Atendimento', y='Valor_Total', color='#C07C20')
                 
-                st.markdown("#### 📋 Detalhamento Financeiro")
+                st.markdown("#### 📋 Detalhamento Financeiro (Apenas Pendências)")
                 df_id_ad_tabela = df_id_ad.rename(columns={'Tipo_Atendimento': 'Classificação', 'Quantidade': 'Qtd. de Guias/Linhas', 'Valor_Total': 'Valor Represado (R$)'})
                 st.dataframe(df_id_ad_tabela.style.format({'Valor Represado (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
