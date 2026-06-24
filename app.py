@@ -92,7 +92,7 @@ st.markdown("""
     div[data-testid="stMetricValue"] {
         color: #1A1714 !important;
         font-weight: 800 !important;
-        font-size: 30px !important;
+        font-size: 26px !important;
         letter-spacing: -1px;
     }
     
@@ -198,12 +198,16 @@ if arquivos_amil:
             else:
                 df['Especialidades Pendentes'] = 'Aguardando planilha de setores técnica...'
 
+            # Cálculos Globais
             guia_valida_numerica = df['Nº Guia Solicitação (TISS)'].str.isnumeric()
             df['Inserido_Amil'] = (guia_valida_numerica) | (df['Senha Aprovação'] != '') | (df['Status Aut Orç'] == 'Autorizado')
             
             total_pacientes = len(df)
             inseridos = df['Inserido_Amil'].sum()
             faltam = total_pacientes - inseridos
+            
+            # Valor Total Pendente (Represado)
+            valor_total_pendente = df[df['Inserido_Amil'] == False]['Valor a Cobrar'].sum()
             
             df_prontuario = df[df['Status Aut Orç'] == 'Prontuário Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
             df_ops = df[df['Status Aut Orç'] == 'OPS Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
@@ -214,12 +218,14 @@ if arquivos_amil:
             aba1, aba2, aba3, aba4, aba5 = st.tabs(["⭐ Resumo Geral", "👤 Gestão de Equipe", "🏥 Segmentação ID / AD", "📋 Listas de Prorrogação", "🚨 Alertas de Erro"])
             
             with aba1:
-                st.markdown("### 📌 Indicadores Operacionais")
-                card1, card2, card3, card4 = st.columns(4)
-                card1.metric("Total de Processos (Linhas)", f"{total_pacientes}")
-                card2.metric("✅ Inseridos no Portal", f"{inseridos}")
-                card3.metric("⏳ Pendentes Total", f"{faltam}")
-                card4.metric("🚨 Erros de Cadastro", f"{len(pacientes_com_erro)}")
+                st.markdown("### 📌 Indicadores Operacionais e Financeiros")
+                # Adicionado o CARD DE VALOR FINANCEIRO AQUI
+                card1, card2, card3, card4, card5 = st.columns(5)
+                card1.metric("Total Linhas (IW)", f"{total_pacientes}")
+                card2.metric("✅ Inseridos", f"{inseridos}")
+                card3.metric("⏳ Pendentes", f"{faltam}")
+                card4.metric("🚨 Erros IW", f"{len(pacientes_com_erro)}")
+                card5.metric("💰 Represado (R$)", f"R$ {valor_total_pendente:,.2f}")
                 
                 if df_s_consolidado is not None:
                     st.markdown("---")
@@ -240,7 +246,6 @@ if arquivos_amil:
                         st.write("**Impacto Financeiro Bloqueado por Setor (R$)**")
                         st.bar_chart(analise_setores, x='Grupo Especialidade', y='Valor_Total', color='#C07C20')
 
-            # --- ABA 2: EQUIPE (CORRIGIDA) ---
             with aba2:
                 st.markdown("### 👤 Produtividade e Carga Operacional")
                 st.write("Análise puramente física do volume de pacientes **únicos** e inputs no portal.")
@@ -248,11 +253,9 @@ if arquivos_amil:
                 col_responsavel = 'Pessoa Resp Aut'
                 col_paciente = 'Nome do Paciente'
                 
-                # Conta total de inputs brutos por funcionário
                 df_inputs = df.groupby(col_responsavel)['Inserido_Amil'].sum().reset_index()
                 df_inputs.columns = [col_responsavel, 'Total de Inputs Realizados']
                 
-                # Remove pacientes repetidos para aquele colaborador
                 df_unicos = df.drop_duplicates(subset=[col_responsavel, col_paciente]).copy()
                 df_unicos['Qtd_ID'] = df_unicos['Tipo_Atendimento'] == 'ID (Internação Domiciliar)'
                 df_unicos['Qtd_AD'] = df_unicos['Tipo_Atendimento'] == 'AD (Atenção Domiciliar)'
@@ -293,27 +296,48 @@ if arquivos_amil:
                 )
                 st.plotly_chart(fig_carga, use_container_width=True)
 
+            # --- ABA 3: ID vs AD (AGORA COM OS VALORES DE VOLTA!) ---
             with aba3:
                 st.markdown("### 🏥 Análise do Modelo de Atendimento Solar (ID vs AD)")
+                
                 df_id_ad = df.groupby('Tipo_Atendimento').agg(
                     Quantidade=('Nome do Paciente', 'count'),
                     Valor_Total=('Valor a Cobrar', 'sum')
                 ).reset_index()
                 
+                # ADICIONADO: Cards explícitos com os valores em Reais (R$)
+                val_id = df_id_ad.loc[df_id_ad['Tipo_Atendimento'] == 'ID (Internação Domiciliar)', 'Valor_Total'].sum()
+                val_ad = df_id_ad.loc[df_id_ad['Tipo_Atendimento'] == 'AD (Atenção Domiciliar)', 'Valor_Total'].sum()
+                
+                m_col1, m_col2 = st.columns(2)
+                m_col1.metric("💰 Represado em ID (Internação)", f"R$ {val_id:,.2f}")
+                m_col2.metric("💰 Represado em AD (Atenção)", f"R$ {val_ad:,.2f}")
+                
+                st.markdown("---")
+                
                 id_col1, id_col2 = st.columns(2)
                 with id_col1:
+                    st.write("**Quantidade de Pacientes por Tipo**")
                     st.bar_chart(df_id_ad, x='Tipo_Atendimento', y='Quantidade', color='#5C1220')
                 with id_col2:
+                    st.write("**Volume de Prorrogações Represado (R$) por Tipo**")
                     st.bar_chart(df_id_ad, x='Tipo_Atendimento', y='Valor_Total', color='#C07C20')
+                
+                # ADICIONADO: A tabela detalhada com os valores exatos de volta!
+                st.markdown("#### 📋 Detalhamento Financeiro")
+                df_id_ad_tabela = df_id_ad.rename(columns={'Tipo_Atendimento': 'Classificação', 'Quantidade': 'Qtd. de Guias/Linhas', 'Valor_Total': 'Valor Represado (R$)'})
+                st.dataframe(df_id_ad_tabela.style.format({'Valor Represado (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
             with aba4:
                 st.markdown("### 📋 Prorrogações Ordenadas pelos Maiores Valores")
                 tab_p, tab_o = st.tabs(["📄 Prontuário Pendente", "🏢 OPS Pendente"])
                 with tab_p:
+                    st.markdown(f"**Total de Processos: {len(df_prontuario)} | Montante: R$ {df_prontuario['Valor a Cobrar'].sum():,.2f}**")
                     df_p_view = df_prontuario[['Nr. Atendimento', 'Nome do Paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
                     df_p_view.columns = ['Nº Atendimento', 'Nome do Paciente', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
                     st.dataframe(df_p_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
                 with tab_o:
+                    st.markdown(f"**Total de Processos: {len(df_ops)} | Montante: R$ {df_ops['Valor a Cobrar'].sum():,.2f}**")
                     df_o_view = df_ops[['Nr. Atendimento', 'Nome do Paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
                     df_o_view.columns = ['Nº Atendimento', 'Nome do Paciente', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
                     st.dataframe(df_o_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
