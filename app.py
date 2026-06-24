@@ -206,9 +206,6 @@ if arquivos_amil:
             inseridos = df['Inserido_Amil'].sum()
             faltam = total_pacientes - inseridos
             
-            # Valor Total Pendente (Represado) no Geral
-            valor_total_pendente = df[df['Inserido_Amil'] == False]['Valor a Cobrar'].sum()
-            
             df_prontuario = df[df['Status Aut Orç'] == 'Prontuário Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
             df_ops = df[df['Status Aut Orç'] == 'OPS Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
             
@@ -219,36 +216,11 @@ if arquivos_amil:
             
             with aba1:
                 st.markdown("### 📌 Indicadores Operacionais e Financeiros")
-                card1, card2, card3, card4, card5 = st.columns(5)
+                card1, card2, card3, card4 = st.columns(4)
                 card1.metric("Total Linhas (IW)", f"{total_pacientes}")
                 card2.metric("✅ Inseridos", f"{inseridos}")
                 card3.metric("⏳ Pendentes", f"{faltam}")
                 card4.metric("🚨 Erros IW", f"{len(pacientes_com_erro)}")
-                card5.metric("💰 Represado (R$)", f"R$ {valor_total_pendente:,.2f}")
-                
-                st.markdown("---")
-                
-                coluna_setor = next((col for col in df.columns if 'Setor' in col or 'Região' in col or 'SAD' in col), None)
-                if not coluna_setor and 'Setor' in df.columns:
-                    coluna_setor = 'Setor'
-                
-                if coluna_setor:
-                    st.markdown("### 🗺️ Gráfico por Setor Regional (SAD)")
-                    df_graf_setor = df[coluna_setor].value_counts().reset_index()
-                    df_graf_setor.columns = ['Setor', 'Quantidade de Pacientes']
-                    
-                    fig_setor = px.bar(
-                        df_graf_setor,
-                        x='Setor',
-                        y='Quantidade de Pacientes',
-                        color='Setor',
-                        title="Distribuição de Demandas por Setor",
-                        text_auto=True,
-                        color_discrete_sequence=px.colors.sequential.RdBu
-                    )
-                    fig_setor.update_traces(textposition='outside')
-                    fig_setor.update_layout(showlegend=False)
-                    st.plotly_chart(fig_setor, use_container_width=True)
                 
                 if df_s_consolidado is not None:
                     st.markdown("---")
