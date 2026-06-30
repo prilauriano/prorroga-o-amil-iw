@@ -10,7 +10,7 @@ st.set_page_config(page_title="Dashboard Prorrogações | Solar Cuidados", page_
 # 2. Injeção da Paleta de Cores Exata do Site (Bordô, Dourado e Off-White)
 st.markdown("""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght=300;400;500;600;700;800&display=swap');
     
     html, body, [data-testid="stAppViewContainer"], [data-testid="stHeader"] {
         background-color: #FAFAF9 !important; 
@@ -195,7 +195,6 @@ if arquivos_amil:
                 df_s_consolidado['Grupo Especialidade'] = df_s_consolidado['Grupo Especialidade'].fillna('Outros').astype(str).str.strip()
                 atendimentos_pendentes_setores = set(df_s_consolidado['Nº Atendimento'].unique())
                 
-                # Agrupamento para mostrar o texto na tabela
                 setores_agrupados = df_s_consolidado.groupby('Nº Atendimento')['Grupo Especialidade'].apply(
                     lambda x: ', '.join(sorted(set(x)))
                 ).reset_index()
@@ -209,11 +208,10 @@ if arquivos_amil:
 
         df['Tem_Pendencia_Setor'] = df['Nr. Atendimento'].isin(atendimentos_pendentes_setores)
 
-        # Filtro do Caminho Livre
+        # Filtros de Listas
         df_liberados = df[(df['Inserido_Amil'] == False) & (df['Tem_Pendencia_Setor'] == False)].copy()
         df_liberados = df_liberados.sort_values(by='Valor a Cobrar', ascending=False)
 
-        # Listas originais ordenadas
         df_prontuario = df[df['Status Aut Orç'] == 'Prontuário Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
         df_ops = df[df['Status Aut Orç'] == 'OPS Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
 
@@ -243,7 +241,6 @@ if arquivos_amil:
             card4.metric("🚀 Liberados p/ Input", f"{len(df_liberados)}")
             card5.metric("💰 Represado Total", f"R$ {valor_total_pendente:,.2f}")
             
-            # VOLTOU: Gráfico Regional (SAD)
             coluna_setor = next((col for col in df.columns if 'Setor' in col or 'Região' in col or 'SAD' in col), None)
             if not coluna_setor and 'Setor' in df.columns:
                 coluna_setor = 'Setor'
@@ -256,7 +253,7 @@ if arquivos_amil:
                 fig_setor.update_layout(showlegend=False)
                 st.plotly_chart(fig_setor, use_container_width=True)
 
-            # VOLTOU: Análise de Relatórios Pendentes por Setor Multidisciplinar
+            # CORRIGIDO: Gráficos de Setores Técnicos reestruturados com Plotly Express (Bordô e Dourado)
             if df_s_consolidado is not None:
                 st.markdown("---")
                 st.markdown("### 🏢 Pendências de Relatório por Setor Multidisciplinar")
@@ -266,15 +263,32 @@ if arquivos_amil:
                 analise_setores = df_setores_valores.groupby('Grupo Especialidade').agg(
                     Quantidade=('ID Pront.', 'count'),
                     Valor_Total=('Valor a Cobrar', 'sum')
-                ).reset_index()
+                ).reset_index().sort_values(by='Quantidade', ascending=False)
                 
                 set_col1, set_col2 = st.columns(2)
                 with set_col1:
-                    st.write("**Quantidade de Relatórios Pendentes por Setor**")
-                    st.bar_chart(analise_setores, x='Grupo Especialidade', y='Quantidade', color='#5C1220')
+                    fig_qtd = px.bar(
+                        analise_setores, 
+                        x='Grupo Especialidade', 
+                        y='Quantidade', 
+                        title="<b>Quantidade de Relatórios Pendentes por Setor</b>",
+                        text_auto=True
+                    )
+                    fig_qtd.update_traces(marker_color='#5C1220', textposition='outside') # Cor Bordô Oficial
+                    fig_qtd.update_layout(xaxis_title="Setor Técnico", yaxis_title="Nº de Pendências", plot_bgcolor='rgba(0,0,0,0)', yaxis=dict(showgrid=True, gridcolor='#E2DDD6'))
+                    st.plotly_chart(fig_qtd, use_container_width=True)
+                    
                 with set_col2:
-                    st.write("**Impacto Financeiro Bloqueado por Setor (R$)**")
-                    st.bar_chart(analise_setores, x='Grupo Especialidade', y='Valor_Total', color='#C07C20')
+                    fig_val = px.bar(
+                        analise_setores, 
+                        x='Grupo Especialidade', 
+                        y='Valor_Total', 
+                        title="<b>Impacto Financeiro Bloqueado por Setor (R$)</b>",
+                        text_auto='.2f'
+                    )
+                    fig_val.update_traces(marker_color='#C07C20', textposition='outside') # Cor Dourada Oficial
+                    fig_val.update_layout(xaxis_title="Setor Técnico", yaxis_title="Valor Represado (R$)", plot_bgcolor='rgba(0,0,0,0)', yaxis=dict(showgrid=True, gridcolor='#E2DDD6'))
+                    st.plotly_chart(fig_val, use_container_width=True)
 
         with aba2:
             st.markdown("### 👤 Produtividade e Carga Operacional")
@@ -297,7 +311,6 @@ if arquivos_amil:
             st.dataframe(df_id_ad.style.format({'Valor_Total': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
         with aba4:
-            # VOLTOU: Listas completas de Prontuário e OPS originais
             st.markdown("### 📋 Prorrogações Ordenadas pelos Maiores Valores")
             tab_p, tab_o = st.tabs(["📄 Prontuário Pendente", "🏢 OPS Pendente"])
             with tab_p:
@@ -314,7 +327,6 @@ if arquivos_amil:
                 st.dataframe(df_o_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
         with aba5:
-            # ABA NOVA INTEGRADA: Liberados para Input sem perder nada
             st.markdown("### 🚀 Pacientes Liberados (Sem Pendências nos Setores)")
             if not arquivos_setores:
                 st.warning("⚠️ Para ver quem está liberado, carregue a planilha de Setores no campo de upload.")
