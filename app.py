@@ -114,17 +114,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 st.markdown('<p class="subtitle">Módulo operacional integrado de auditoria Amil IW, monitoramento de prazos e volumetria ID/AD.</p>', unsafe_allow_html=True)
 
-# Funções de Proteção Visual para LGPD
-def ocultar_nome_paciente(nome):
-    if not nome or pd.isna(nome): return "Paciente Protegido"
-    partes = str(nome).strip().split()
-    return " ".join([p[0] + "*" * (len(p) - 1) if len(p) > 1 else p for p in partes])
-
-def ocultar_matricula(mat):
-    mat_str = str(mat).strip()
-    if not mat_str or mat_str.lower() == 'nan': return "******"
-    return mat_str[:2] + "****" + mat_str[-2:] if len(mat_str) > 4 else "****"
-
 # --- ÁREA DE UPLOAD ---
 col_up1, col_up2 = st.columns(2)
 with col_up1:
@@ -171,7 +160,7 @@ if arquivos_amil:
         guia_valida_numerica = df['Nº Guia Solicitação (TISS)'].str.isnumeric()
         df['Inserido_Amil'] = (guia_valida_numerica) | (df['Senha Aprovação'] != '') | (df['Status Aut Orç'] == 'Autorizado')
 
-        # --- PROCESSAMENTO DOS SETORES (CRUZAMENTO COMPLETO) ---
+        # --- PROCESSAMENTO DOS SETORES ---
         atendimentos_pendentes_setores = set()
         df_s_consolidado = None
         setores_agrupados = None
@@ -208,7 +197,7 @@ if arquivos_amil:
 
         df['Tem_Pendencia_Setor'] = df['Nr. Atendimento'].isin(atendimentos_pendentes_setores)
 
-        # Filtros de Listas
+        # Filtros das Tabelas Visuais
         df_liberados = df[(df['Inserido_Amil'] == False) & (df['Tem_Pendencia_Setor'] == False)].copy()
         df_liberados = df_liberados.sort_values(by='Valor a Cobrar', ascending=False)
 
@@ -253,7 +242,6 @@ if arquivos_amil:
                 fig_setor.update_layout(showlegend=False)
                 st.plotly_chart(fig_setor, use_container_width=True)
 
-            # CORRIGIDO: Gráficos de Setores Técnicos reestruturados com Plotly Express (Bordô e Dourado)
             if df_s_consolidado is not None:
                 st.markdown("---")
                 st.markdown("### 🏢 Pendências de Relatório por Setor Multidisciplinar")
@@ -267,26 +255,14 @@ if arquivos_amil:
                 
                 set_col1, set_col2 = st.columns(2)
                 with set_col1:
-                    fig_qtd = px.bar(
-                        analise_setores, 
-                        x='Grupo Especialidade', 
-                        y='Quantidade', 
-                        title="<b>Quantidade de Relatórios Pendentes por Setor</b>",
-                        text_auto=True
-                    )
-                    fig_qtd.update_traces(marker_color='#5C1220', textposition='outside') # Cor Bordô Oficial
+                    fig_qtd = px.bar(analise_setores, x='Grupo Especialidade', y='Quantidade', title="<b>Quantidade de Relatórios Pendentes por Setor</b>", text_auto=True)
+                    fig_qtd.update_traces(marker_color='#5C1220', textposition='outside')
                     fig_qtd.update_layout(xaxis_title="Setor Técnico", yaxis_title="Nº de Pendências", plot_bgcolor='rgba(0,0,0,0)', yaxis=dict(showgrid=True, gridcolor='#E2DDD6'))
                     st.plotly_chart(fig_qtd, use_container_width=True)
                     
                 with set_col2:
-                    fig_val = px.bar(
-                        analise_setores, 
-                        x='Grupo Especialidade', 
-                        y='Valor_Total', 
-                        title="<b>Impacto Financeiro Bloqueado por Setor (R$)</b>",
-                        text_auto='.2f'
-                    )
-                    fig_val.update_traces(marker_color='#C07C20', textposition='outside') # Cor Dourada Oficial
+                    fig_val = px.bar(analise_setores, x='Grupo Especialidade', y='Valor_Total', title="<b>Impacto Financeiro Bloqueado por Setor (R$)</b>", text_auto='.2f')
+                    fig_val.update_traces(marker_color='#C07C20', textposition='outside')
                     fig_val.update_layout(xaxis_title="Setor Técnico", yaxis_title="Valor Represado (R$)", plot_bgcolor='rgba(0,0,0,0)', yaxis=dict(showgrid=True, gridcolor='#E2DDD6'))
                     st.plotly_chart(fig_val, use_container_width=True)
 
@@ -315,14 +291,14 @@ if arquivos_amil:
             tab_p, tab_o = st.tabs(["📄 Prontuário Pendente", "🏢 OPS Pendente"])
             with tab_p:
                 st.markdown(f"**Total de Processos: {len(df_prontuario)} | Montante: R$ {df_prontuario['Valor a Cobrar'].sum():,.2f}**")
+                # NOMES REAIS RESTAURADOS EM TELA
                 df_p_view = df_prontuario[['Nr. Atendimento', 'Nome do Paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
-                df_p_view['Nome do Paciente'] = df_p_view['Nome do Paciente'].apply(ocultar_nome_paciente)
                 df_p_view.columns = ['Nº Atendimento', 'Paciente', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
                 st.dataframe(df_p_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
             with tab_o:
                 st.markdown(f"**Total de Processos: {len(df_ops)} | Montante: R$ {df_ops['Valor a Cobrar'].sum():,.2f}**")
+                # NOMES REAIS RESTAURADOS EM TELA
                 df_o_view = df_ops[['Nr. Atendimento', 'Nome do Paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
-                df_o_view['Nome do Paciente'] = df_o_view['Nome do Paciente'].apply(ocultar_nome_paciente)
                 df_o_view.columns = ['Nº Atendimento', 'Paciente', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
                 st.dataframe(df_o_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
@@ -345,16 +321,15 @@ if arquivos_amil:
                 )
                 
                 st.markdown("---")
+                # NOMES REAIS RESTAURADOS EM TELA
                 df_liberados_view = df_liberados[['Nr. Atendimento', 'Nome do Paciente', 'Tipo_Atendimento', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
-                df_liberados_view['Nome do Paciente'] = df_liberados_view['Nome do Paciente'].apply(ocultar_nome_paciente)
                 df_liberados_view.columns = ['Nº Atendimento', 'Paciente', 'Tipo Atendimento', 'Responsável', 'Valor a Cobrar (R$)']
                 st.dataframe(df_liberados_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
         with aba6:
             st.markdown("### 🚨 Cadastros Incompletos / Erros no IW")
+            # MATRÍCULAS E NOMES REAIS RESTAURADOS EM TELA
             df_erro_view = pacientes_com_erro[['Nr. Atendimento', 'Nome do Paciente', 'Nr. Matricula', 'Pessoa Resp Aut']].copy()
-            df_erro_view['Nome do Paciente'] = df_erro_view['Nome do Paciente'].apply(ocultar_nome_paciente)
-            df_erro_view['Nr. Matricula'] = df_erro_view['Nr. Matricula'].apply(ocultar_matricula)
             df_erro_view.columns = ['Nº Atendimento', 'Paciente', 'Matrícula', 'Responsável']
             st.dataframe(df_erro_view, use_container_width=True, hide_index=True)
                     
