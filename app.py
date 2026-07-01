@@ -138,13 +138,12 @@ if arquivos_amil:
         
         df = pd.concat(lista_dfs_amil, ignore_index=True)
         
-        # CORRIGIDO: Mapeando e limpando o campo 'ID Orçam.' correto da Amil
+        # Mapeando e limpando o campo 'ID Orçam.' correto da Amil
         for c in ['Nº Guia Solicitação (TISS)', 'Senha Aprovação', 'Status Aut Orç', 'Nr. Matricula', 'Pessoa Resp Aut', 'Classific. Atendimento', 'Nome do Paciente', 'ID Orçam.']:
             if c in df.columns:
-                # Remove o '.0' caso o pandas tenha interpretado como float ao ler
                 df[c] = df[c].fillna('').astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             elif c == 'ID Orçam.':
-                df['ID Orçam.'] = '' # Fallback de segurança se não achar a coluna
+                df['ID Orçam.'] = ''
         
         df['Nr. Atendimento'] = df['Nr. Atendimento'].astype(str).str.strip()
         
@@ -234,6 +233,21 @@ if arquivos_amil:
             card4.metric("🚀 Liberados p/ Input", f"{len(df_liberados)}")
             card5.metric("💰 Represado Total", f"R$ {valor_total_pendente:,.2f}")
             
+            # --- NOVO SEGUNDO BOTÃO: DOWNLOAD DA PLANILHA COMPLETA TOTALMENTE LIMPA ---
+            st.markdown("### 📥 Exportação de Dados Limpos")
+            buffer_completo = io.BytesIO()
+            with pd.ExcelWriter(buffer_completo, engine='xlsxwriter') as writer:
+                df.to_excel(writer, sheet_name='Base Consolidada IW', index=False)
+            
+            st.download_button(
+                label="🟢 Baixar Planilha Consolidada COMPLETA (Excel Limpo)",
+                data=buffer_completo.getvalue(),
+                file_name="base_consolidada_iw_limpa.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                help="Clique aqui para baixar todas as linhas originais do IW já devidamente separadas em colunas limpas no Excel."
+            )
+            st.markdown("---")
+            
             coluna_setor = next((col for col in df.columns if 'Setor' in col or 'Região' in col or 'SAD' in col), None)
             if not coluna_setor and 'Setor' in df.columns:
                 coluna_setor = 'Setor'
@@ -295,13 +309,11 @@ if arquivos_amil:
             tab_p, tab_o = st.tabs(["📄 Prontuário Pendente", "🏢 OPS Pendente"])
             with tab_p:
                 st.markdown(f"**Total de Processos: {len(df_prontuario)} | Montante: R$ {df_prontuario['Valor a Cobrar'].sum():,.2f}**")
-                # AJUSTADO: Puxando do campo correto 'ID Orçam.' logo ao lado do Paciente
                 df_p_view = df_prontuario[['Nr. Atendimento', 'Nome do Paciente', 'ID Orçam.', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
                 df_p_view.columns = ['Nº Atendimento', 'Paciente', 'ID Orçamento', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
                 st.dataframe(df_p_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
             with tab_o:
                 st.markdown(f"**Total de Processos: {len(df_ops)} | Montante: R$ {df_ops['Valor a Cobrar'].sum():,.2f}**")
-                # AJUSTADO: Puxando do campo correto 'ID Orçam.' logo ao lado do Paciente
                 df_o_view = df_ops[['Nr. Atendimento', 'Nome do Paciente', 'ID Orçam.', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
                 df_o_view.columns = ['Nº Atendimento', 'Paciente', 'ID Orçamento', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
                 st.dataframe(df_o_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
@@ -325,14 +337,12 @@ if arquivos_amil:
                 )
                 
                 st.markdown("---")
-                # AJUSTADO: Puxando do campo correto 'ID Orçam.' logo ao lado do Paciente
                 df_liberados_view = df_liberados[['Nr. Atendimento', 'Nome do Paciente', 'ID Orçam.', 'Tipo_Atendimento', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
                 df_liberados_view.columns = ['Nº Atendimento', 'Paciente', 'ID Orçamento', 'Tipo Atendimento', 'Responsável', 'Valor a Cobrar (R$)']
                 st.dataframe(df_liberados_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
         with aba6:
             st.markdown("### 🚨 Cadastros Incompletos / Erros no IW")
-            # AJUSTADO: Puxando do campo correto 'ID Orçam.' logo ao lado do Paciente
             df_erro_view = pacientes_com_erro[['Nr. Atendimento', 'Nome do Paciente', 'ID Orçam.', 'Nr. Matricula', 'Pessoa Resp Aut']].copy()
             df_erro_view.columns = ['Nº Atendimento', 'Paciente', 'ID Orçamento', 'Matrícula', 'Responsável']
             st.dataframe(df_erro_view, use_container_width=True, hide_index=True)
