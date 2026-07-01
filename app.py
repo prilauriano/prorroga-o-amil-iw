@@ -233,21 +233,6 @@ if arquivos_amil:
             card4.metric("🚀 Liberados p/ Input", f"{len(df_liberados)}")
             card5.metric("💰 Represado Total", f"R$ {valor_total_pendente:,.2f}")
             
-            # --- NOVO SEGUNDO BOTÃO: DOWNLOAD DA PLANILHA COMPLETA TOTALMENTE LIMPA ---
-            st.markdown("### 📥 Exportação de Dados Limpos")
-            buffer_completo = io.BytesIO()
-            with pd.ExcelWriter(buffer_completo, engine='xlsxwriter') as writer:
-                df.to_excel(writer, sheet_name='Base Consolidada IW', index=False)
-            
-            st.download_button(
-                label="🟢 Baixar Planilha Consolidada COMPLETA (Excel Limpo)",
-                data=buffer_completo.getvalue(),
-                file_name="base_consolidada_iw_limpa.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                help="Clique aqui para baixar todas as linhas originais do IW já devidamente separadas em colunas limpas no Excel."
-            )
-            st.markdown("---")
-            
             coluna_setor = next((col for col in df.columns if 'Setor' in col or 'Região' in col or 'SAD' in col), None)
             if not coluna_setor and 'Setor' in df.columns:
                 coluna_setor = 'Setor'
@@ -318,6 +303,7 @@ if arquivos_amil:
                 df_o_view.columns = ['Nº Atendimento', 'Paciente', 'ID Orçamento', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
                 st.dataframe(df_o_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
+        # --- 🚀 ABA 5: LIBERADOS PARA INPUT (AJUSTADA COM O SEGUNDO BOTÃO ENXUTO) ---
         with aba5:
             st.markdown("### 🚀 Pacientes Liberados (Sem Pendências nos Setores)")
             if not arquivos_setores:
@@ -325,18 +311,47 @@ if arquivos_amil:
             else:
                 st.markdown(f"**🔥 Total Prontos para Input: {len(df_liberados)} | Valor de Giro Rápido: R$ {df_liberados['Valor a Cobrar'].sum():,.2f}**")
                 
-                buffer = io.BytesIO()
-                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                    df_liberados.to_excel(writer, sheet_name='Liberados Para Input', index=False)
+                # Botão 1: Baixa a planilha com TODAS as colunas originais do IW
+                buffer_total = io.BytesIO()
+                with pd.ExcelWriter(buffer_total, engine='xlsxwriter') as writer:
+                    df_liberados.to_excel(writer, sheet_name='Liberados Base Total', index=False)
                 
                 st.download_button(
-                    label="📥 Baixar Planilha de Liberados (Excel)",
-                    data=buffer.getvalue(),
-                    file_name="pacientes_liberados_input_solar.xlsx",
+                    label="📥 Baixar Planilha de Liberados (Todas as Colunas)",
+                    data=buffer_total.getvalue(),
+                    file_name="pacientes_liberados_completo_solar.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
                 
+                # --- NOVO BOTÃO 2: BAIXA APENAS AS COLUNAS QUE ESTÃO NA LISTA ABAIXO ---
+                # Criando o DataFrame limpo igual à visualização da tela
+                df_liberados_clean_excel = df_liberados[['Nr. Atendimento', 'Nome do Paciente', 'ID Orçam.', 'Tipo_Atendimento', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
+                df_liberados_clean_excel.columns = ['Nº Atendimento', 'Paciente', 'ID Orçamento', 'Tipo Atendimento', 'Responsável', 'Valor a Cobrar (R$)']
+                
+                buffer_clean = io.BytesIO()
+                with pd.ExcelWriter(buffer_clean, engine='xlsxwriter') as writer:
+                    df_liberados_clean_excel.to_excel(writer, sheet_name='Liberados Resumido', index=False)
+                    
+                    # Ajuste fino de formatação de dinheiro e largura automática para o Excel vir perfeito
+                    workbook  = writer.book
+                    worksheet = writer.sheets['Liberados Resumido']
+                    format_money = workbook.add_format({'num_format': 'R$ #,##0.00'})
+                    
+                    # Aplica a formatação de moeda na última coluna (Coluna F)
+                    worksheet.set_column('F:F', 18, format_money)
+                    # Ajusta as outras colunas de texto
+                    worksheet.set_column('A:E', 22)
+                
+                st.download_button(
+                    label="🟢 Baixar Planilha Enxuta (Apenas Dados Abaixo Limpos)",
+                    data=buffer_clean.getvalue(),
+                    file_name="pacientes_liberados_enxuto_solar.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    help="Baixa apenas as colunas estruturadas da tabela visual abaixo de forma limpa no Excel."
+                )
+                
                 st.markdown("---")
+                # Tabela Visual do Streamlit
                 df_liberados_view = df_liberados[['Nr. Atendimento', 'Nome do Paciente', 'ID Orçam.', 'Tipo_Atendimento', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
                 df_liberados_view.columns = ['Nº Atendimento', 'Paciente', 'ID Orçamento', 'Tipo Atendimento', 'Responsável', 'Valor a Cobrar (R$)']
                 st.dataframe(df_liberados_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
