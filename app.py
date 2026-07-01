@@ -138,9 +138,12 @@ if arquivos_amil:
         
         df = pd.concat(lista_dfs_amil, ignore_index=True)
         
-        for c in ['Nº Guia Solicitação (TISS)', 'Senha Aprovação', 'Status Aut Orç', 'Nr. Matricula', 'Pessoa Resp Aut', 'Classific. Atendimento', 'Nome do Paciente']:
+        # Incluindo 'Nr. Orçamento' no tratamento de strings
+        for c in ['Nº Guia Solicitação (TISS)', 'Senha Aprovação', 'Status Aut Orç', 'Nr. Matricula', 'Pessoa Resp Aut', 'Classific. Atendimento', 'Nome do Paciente', 'Nr. Orçamento']:
             if c in df.columns:
                 df[c] = df[c].fillna('').astype(str).str.strip()
+            elif c == 'Nr. Orçamento':
+                df['Nr. Orçamento'] = '' # Cria coluna vazia se não existir na planilha para não quebrar o código
         
         df['Nr. Atendimento'] = df['Nr. Atendimento'].astype(str).str.strip()
         
@@ -291,15 +294,15 @@ if arquivos_amil:
             tab_p, tab_o = st.tabs(["📄 Prontuário Pendente", "🏢 OPS Pendente"])
             with tab_p:
                 st.markdown(f"**Total de Processos: {len(df_prontuario)} | Montante: R$ {df_prontuario['Valor a Cobrar'].sum():,.2f}**")
-                # NOMES REAIS RESTAURADOS EM TELA
-                df_p_view = df_prontuario[['Nr. Atendimento', 'Nome do Paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
-                df_p_view.columns = ['Nº Atendimento', 'Paciente', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
+                # AJUSTADO: Adicionado 'Nr. Orçamento' logo após o Nome do Paciente
+                df_p_view = df_prontuario[['Nr. Atendimento', 'Nome do Paciente', 'Nr. Orçamento', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
+                df_p_view.columns = ['Nº Atendimento', 'Paciente', 'Nº Orçamento', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
                 st.dataframe(df_p_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
             with tab_o:
                 st.markdown(f"**Total de Processos: {len(df_ops)} | Montante: R$ {df_ops['Valor a Cobrar'].sum():,.2f}**")
-                # NOMES REAIS RESTAURADOS EM TELA
-                df_o_view = df_ops[['Nr. Atendimento', 'Nome do Paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
-                df_o_view.columns = ['Nº Atendimento', 'Paciente', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
+                # AJUSTADO: Adicionado 'Nr. Orçamento' logo após o Nome do Paciente
+                df_o_view = df_ops[['Nr. Atendimento', 'Nome do Paciente', 'Nr. Orçamento', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
+                df_o_view.columns = ['Nº Atendimento', 'Paciente', 'Nº Orçamento', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
                 st.dataframe(df_o_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
         with aba5:
@@ -321,16 +324,16 @@ if arquivos_amil:
                 )
                 
                 st.markdown("---")
-                # NOMES REAIS RESTAURADOS EM TELA
-                df_liberados_view = df_liberados[['Nr. Atendimento', 'Nome do Paciente', 'Tipo_Atendimento', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
-                df_liberados_view.columns = ['Nº Atendimento', 'Paciente', 'Tipo Atendimento', 'Responsável', 'Valor a Cobrar (R$)']
+                # AJUSTADO: Adicionado 'Nr. Orçamento' logo após o Nome do Paciente
+                df_liberados_view = df_liberados[['Nr. Atendimento', 'Nome do Paciente', 'Nr. Orçamento', 'Tipo_Atendimento', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
+                df_liberados_view.columns = ['Nº Atendimento', 'Paciente', 'Nº Orçamento', 'Tipo Atendimento', 'Responsável', 'Valor a Cobrar (R$)']
                 st.dataframe(df_liberados_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
         with aba6:
             st.markdown("### 🚨 Cadastros Incompletos / Erros no IW")
-            # MATRÍCULAS E NOMES REAIS RESTAURADOS EM TELA
-            df_erro_view = pacientes_com_erro[['Nr. Atendimento', 'Nome do Paciente', 'Nr. Matricula', 'Pessoa Resp Aut']].copy()
-            df_erro_view.columns = ['Nº Atendimento', 'Paciente', 'Matrícula', 'Responsável']
+            # AJUSTADO: Adicionado 'Nr. Orçamento' logo após o Nome do Paciente
+            df_erro_view = pacientes_com_erro[['Nr. Atendimento', 'Nome do Paciente', 'Nr. Orçamento', 'Nr. Matricula', 'Pessoa Resp Aut']].copy()
+            df_erro_view.columns = ['Nº Atendimento', 'Paciente', 'Nº Orçamento', 'Matrícula', 'Responsável']
             st.dataframe(df_erro_view, use_container_width=True, hide_index=True)
                     
     except Exception as e:
