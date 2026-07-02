@@ -138,7 +138,7 @@ if arquivos_amil:
         
         df = pd.concat(lista_dfs_amil, ignore_index=True)
         
-        # Mapeando e limpando o campo 'ID Orçam.' correto da Amil
+        # Mapeando e limpando campos principais
         for c in ['Nº Guia Solicitação (TISS)', 'Senha Aprovação', 'Status Aut Orç', 'Nr. Matricula', 'Pessoa Resp Aut', 'Classific. Atendimento', 'Nome do Paciente', 'ID Orçam.']:
             if c in df.columns:
                 df[c] = df[c].fillna('').astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
@@ -200,32 +200,48 @@ if arquivos_amil:
 
         df['Tem_Pendencia_Setor'] = df['Nr. Atendimento'].isin(atendimentos_pendentes_setores)
 
-        # Filtros das Tabelas Visuais
-        df_liberados = df[(df['Inserido_Amil'] == False) & (df['Tem_Pendencia_Setor'] == False)].copy()
+        # --- REFEITO: IDENTIFICAÇÃO E SEPARAÇÃO DO CONTRATO RIOHOME ---
+        coluna_contrato = next((col for col in df.columns if any(p in col.lower() for p in ['contrato', 'convenio', 'operadora', 'plano', 'empresa'])), None)
+        
+        if coluna_contrato:
+            df['É_RioHome'] = df[coluna_contrato].astype(str).str.lower().str.contains('riohome|rio home', regex=True)
+        else:
+            # Caso não encontre a coluna por nome, varre todas as colunas de texto da linha para identificar a palavra RioHome de segurança
+            df['É_RioHome'] = df.astype(str).apply(lambda row: row.str.lower().str.contains('riohome|rio home').any(), axis=1)
+
+        # Divisão das bases: Quem é RioHome vai para a lista manual separada
+        df_riohome = df[df['É_RioHome'] == True].copy()
+        
+        # A base geral de faturamento EXCLUI o contrato RioHome para não inflar as pendências normais
+        df_faturamento_geral = df[df['É_RioHome'] == False].copy()
+
+        # Filtros das Tabelas Visuais (Usando a base limpa sem RioHome)
+        df_liberados = df_faturamento_geral[(df_faturamento_geral['Inserido_Amil'] == False) & (df_faturamento_geral['Tem_Pendencia_Setor'] == False)].copy()
         df_liberados = df_liberados.sort_values(by='Valor a Cobrar', ascending=False)
 
-        df_prontuario = df[df['Status Aut Orç'] == 'Prontuário Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
-        df_ops = df[df['Status Aut Orç'] == 'OPS Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
+        df_prontuario = df_faturamento_geral[df_faturamento_geral['Status Aut Orç'] == 'Prontuário Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
+        df_ops = df_faturamento_geral[df_faturamento_geral['Status Aut Orç'] == 'OPS Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
 
-        # Indicadores globais
-        total_pacientes = len(df)
-        inseridos = df['Inserido_Amil'].sum()
+        # Indicadores globais ajustados (sem contar RioHome no fluxo padrão)
+        total_pacientes = len(df_faturamento_geral)
+        inseridos = df_faturamento_geral['Inserido_Amil'].sum()
         faltam = total_pacientes - inseridos
-        valor_total_pendente = df[df['Inserido_Amil'] == False]['Valor a Cobrar'].sum()
-        pacientes_com_erro = df[(df['Nr. Matricula'].str.len() == 0) | (df['Nr. Atendimento'].isna())]
+        valor_total_pendente = df_faturamento_geral[df_faturamento_geral['Inserido_Amil'] == False]['Valor a Cobrar'].sum()
+        pacientes_com_erro = df_faturamento_geral[(df_faturamento_geral['Nr. Matricula'].str.len() == 0) | (df_faturamento_geral['Nr. Atendimento'].isna())]
 
         # --- ABAS DO DASHBOARD ---
-        aba1, aba2, aba3, aba4, aba5, aba6 = st.tabs([
+        aba1, aba2, aba3, aba4, aba5, aba6, aba7 = st.tabs([
             "⭐ Resumo Geral", 
             "👤 Gestão de Equipe", 
             "🏥 Segmentação ID / AD", 
             "📋 Listas de Prorrogação", 
             "🚀 Liberados para Input",
+            "🏠 Contrato RioHome (Manual)", # ABA NOVA
             "🚨 Alertas de Erro"
         ])
         
         with aba1:
-            st.markdown("### 📌 Indicadores Operacionais e Financeiros")
+            st.markdown("### 📌 Indicadores Operacionais e Financeiros (Exceto RioHome)")
             card1, card2, card3, card4, card5 = st.columns(5)
             card1.metric("Total Linhas (IW)", f"{total_pacientes}")
             card2.metric("✅ Inseridos", f"{inseridos}")
@@ -233,52 +249,42 @@ if arquivos_amil:
             card4.metric("🚀 Liberados p/ Input", f"{len(df_liberados)}")
             card5.metric("💰 Represado Total", f"R$ {valor_total_pendente:,.2f}")
             
-            coluna_setor = next((col for col in df.columns if 'Setor' in col or 'Região' in col or 'SAD' in col), None)
-            if not coluna_setor and 'Setor' in df.columns:
-                coluna_setor = 'Setor'
+            coluna_setor = next((col for col in df_faturamento_geral.columns if 'Setor' in col or 'Região' in col or 'SAD' in col), None)
+            if not coluna_setor and 'Setor' in df_faturamento_geral.columns: coluna_setor = 'Setor'
             if coluna_setor:
                 st.markdown("### 🗺️ Gráfico por Setor Regional (SAD)")
-                df_graf_setor = df[coluna_setor].value_counts().reset_index()
+                df_graf_setor = df_faturamento_geral[coluna_setor].value_counts().reset_index()
                 df_graf_setor.columns = ['Setor', 'Quantidade de Pacientes']
                 fig_setor = px.bar(df_graf_setor, x='Setor', y='Quantidade de Pacientes', color='Setor', text_auto=True, color_discrete_sequence=px.colors.sequential.RdBu)
-                fig_setor.update_traces(textposition='outside')
                 fig_setor.update_layout(showlegend=False)
                 st.plotly_chart(fig_setor, use_container_width=True)
 
             if df_s_consolidado is not None:
                 st.markdown("---")
                 st.markdown("### 🏢 Pendências de Relatório por Setor Multidisciplinar")
-                df_amil_v = df[['Nr. Atendimento', 'Valor a Cobrar']].copy()
+                df_amil_v = df_faturamento_geral[['Nr. Atendimento', 'Valor a Cobrar']].copy()
                 df_setores_valores = pd.merge(df_s_consolidado, df_amil_v, left_on='Nº Atendimento', right_on='Nr. Atendimento', how='left')
-                
-                analise_setores = df_setores_valores.groupby('Grupo Especialidade').agg(
-                    Quantidade=('ID Pront.', 'count'),
-                    Valor_Total=('Valor a Cobrar', 'sum')
-                ).reset_index().sort_values(by='Quantidade', ascending=False)
+                analise_setores = df_setores_valores.groupby('Grupo Especialidade').agg(Quantidade=('ID Pront.', 'count'), Valor_Total=('Valor a Cobrar', 'sum')).reset_index().sort_values(by='Quantidade', ascending=False)
                 
                 set_col1, set_col2 = st.columns(2)
                 with set_col1:
                     fig_qtd = px.bar(analise_setores, x='Grupo Especialidade', y='Quantidade', title="<b>Quantidade de Relatórios Pendentes por Setor</b>", text_auto=True)
                     fig_qtd.update_traces(marker_color='#5C1220', textposition='outside')
-                    fig_qtd.update_layout(xaxis_title="Setor Técnico", yaxis_title="Nº de Pendências", plot_bgcolor='rgba(0,0,0,0)', yaxis=dict(showgrid=True, gridcolor='#E2DDD6'))
                     st.plotly_chart(fig_qtd, use_container_width=True)
-                    
                 with set_col2:
                     fig_val = px.bar(analise_setores, x='Grupo Especialidade', y='Valor_Total', title="<b>Impacto Financeiro Bloqueado por Setor (R$)</b>", text_auto='.2f')
                     fig_val.update_traces(marker_color='#C07C20', textposition='outside')
-                    fig_val.update_layout(xaxis_title="Setor Técnico", yaxis_title="Valor Represado (R$)", plot_bgcolor='rgba(0,0,0,0)', yaxis=dict(showgrid=True, gridcolor='#E2DDD6'))
                     st.plotly_chart(fig_val, use_container_width=True)
 
         with aba2:
             st.markdown("### 👤 Produtividade e Carga Operacional")
             col_responsavel = 'Pessoa Resp Aut'
             col_paciente = 'Nome do Paciente'
-            df_inputs = df.groupby(col_responsavel)['Inserido_Amil'].sum().reset_index()
+            df_inputs = df_faturamento_geral.groupby(col_responsavel)['Inserido_Amil'].sum().reset_index()
             df_inputs.columns = [col_responsavel, 'Total de Inputs Realizados']
-            df_unicos = df.drop_duplicates(subset=[col_responsavel, col_paciente]).copy()
+            df_unicos = df_faturamento_geral.drop_duplicates(subset=[col_responsavel, col_paciente]).copy()
             df_unicos['Qtd_ID'] = df_unicos['Tipo_Atendimento'] == 'ID (Internação Domiciliar)'
             df_unicos['Qtd_AD'] = df_unicos['Tipo_Atendimento'] == 'AD (Atenção Domiciliar)'
-            
             prod_colab = df_unicos.groupby(col_responsavel).agg(Pacientes_ID=('Qtd_ID', 'sum'), Pacientes_AD=('Qtd_AD', 'sum'), Total_Pacientes=(col_paciente, 'count')).reset_index()
             prod_colab.columns = [col_responsavel, 'Nº Pacientes ID', 'Nº Pacientes AD', 'Quantitativo Total Pacientes']
             resumo_equipe = pd.merge(prod_colab, df_inputs, on=col_responsavel)
@@ -286,7 +292,7 @@ if arquivos_amil:
 
         with aba3:
             st.markdown("### 🏥 Análise do Modelo de Atendimento Solar (ID vs AD)")
-            df_id_ad = df[df['Inserido_Amil'] == False].groupby('Tipo_Atendimento').agg(Quantidade=('Nome do Paciente', 'count'), Valor_Total=('Valor a Cobrar', 'sum')).reset_index()
+            df_id_ad = df_faturamento_geral[df_faturamento_geral['Inserido_Amil'] == False].groupby('Tipo_Atendimento').agg(Quantidade=('Nome do Paciente', 'count'), Valor_Total=('Valor a Cobrar', 'sum')).reset_index()
             st.dataframe(df_id_ad.style.format({'Valor_Total': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
         with aba4:
@@ -303,7 +309,6 @@ if arquivos_amil:
                 df_o_view.columns = ['Nº Atendimento', 'Paciente', 'ID Orçamento', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
                 st.dataframe(df_o_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
-        # --- 🚀 ABA 5: LIBERADOS PARA INPUT (AJUSTADA COM O SEGUNDO BOTÃO ENXUTO) ---
         with aba5:
             st.markdown("### 🚀 Pacientes Liberados (Sem Pendências nos Setores)")
             if not arquivos_setores:
@@ -311,52 +316,60 @@ if arquivos_amil:
             else:
                 st.markdown(f"**🔥 Total Prontos para Input: {len(df_liberados)} | Valor de Giro Rápido: R$ {df_liberados['Valor a Cobrar'].sum():,.2f}**")
                 
-                # Botão 1: Baixa a planilha com TODAS as colunas originais do IW
                 buffer_total = io.BytesIO()
                 with pd.ExcelWriter(buffer_total, engine='xlsxwriter') as writer:
                     df_liberados.to_excel(writer, sheet_name='Liberados Base Total', index=False)
+                st.download_button(label="📥 Baixar Planilha de Liberados (Todas as Colunas)", data=buffer_total.getvalue(), file_name="pacientes_liberados_completo_solar.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 
-                st.download_button(
-                    label="📥 Baixar Planilha de Liberados (Todas as Colunas)",
-                    data=buffer_total.getvalue(),
-                    file_name="pacientes_liberados_completo_solar.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-                
-                # --- NOVO BOTÃO 2: BAIXA APENAS AS COLUNAS QUE ESTÃO NA LISTA ABAIXO ---
-                # Criando o DataFrame limpo igual à visualização da tela
                 df_liberados_clean_excel = df_liberados[['Nr. Atendimento', 'Nome do Paciente', 'ID Orçam.', 'Tipo_Atendimento', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
                 df_liberados_clean_excel.columns = ['Nº Atendimento', 'Paciente', 'ID Orçamento', 'Tipo Atendimento', 'Responsável', 'Valor a Cobrar (R$)']
                 
                 buffer_clean = io.BytesIO()
                 with pd.ExcelWriter(buffer_clean, engine='xlsxwriter') as writer:
                     df_liberados_clean_excel.to_excel(writer, sheet_name='Liberados Resumido', index=False)
-                    
-                    # Ajuste fino de formatação de dinheiro e largura automática para o Excel vir perfeito
                     workbook  = writer.book
                     worksheet = writer.sheets['Liberados Resumido']
                     format_money = workbook.add_format({'num_format': 'R$ #,##0.00'})
-                    
-                    # Aplica a formatação de moeda na última coluna (Coluna F)
                     worksheet.set_column('F:F', 18, format_money)
-                    # Ajusta as outras colunas de texto
                     worksheet.set_column('A:E', 22)
                 
-                st.download_button(
-                    label="🟢 Baixar Planilha Enxuta (Apenas Dados Abaixo Limpos)",
-                    data=buffer_clean.getvalue(),
-                    file_name="pacientes_liberados_enxuto_solar.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    help="Baixa apenas as colunas estruturadas da tabela visual abaixo de forma limpa no Excel."
-                )
-                
+                st.download_button(label="🟢 Baixar Planilha Enxuta (Apenas Dados Abaixo Limpos)", data=buffer_clean.getvalue(), file_name="pacientes_liberados_enxuto_solar.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 st.markdown("---")
-                # Tabela Visual do Streamlit
-                df_liberados_view = df_liberados[['Nr. Atendimento', 'Nome do Paciente', 'ID Orçam.', 'Tipo_Atendimento', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
-                df_liberados_view.columns = ['Nº Atendimento', 'Paciente', 'ID Orçamento', 'Tipo Atendimento', 'Responsável', 'Valor a Cobrar (R$)']
-                st.dataframe(df_liberados_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
+                st.dataframe(df_liberados_clean_excel.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
+        # --- 🏠 NOVA ABA 6: CONTRATO RIOHOME (MANUAL) ---
         with aba6:
+            st.markdown("### 🏠 Listagem Isolada — Contrato RioHome")
+            st.markdown("Pacientes identificados neste grupo possuem fluxo de entrega de relatórios **manual** e foram retirados das filas de pendências e inputs gerais.")
+            
+            total_riohome = len(df_riohome)
+            valor_riohome = df_riohome['Valor a Cobrar'].sum()
+            
+            r_col1, r_col2 = st.columns(2)
+            r_col1.metric("📦 Volumetria RioHome", f"{total_riohome} Pacientes")
+            r_col2.metric("💰 Montante RioHome", f"R$ {valor_riohome:,.2f}")
+            st.markdown("---")
+            
+            if total_riohome == 0:
+                st.success("🎉 Nenhum paciente do contrato RioHome foi identificado nas planilhas carregadas.")
+            else:
+                df_riohome_view = df_riohome[['Nr. Atendimento', 'Nome do Paciente', 'ID Orçam.', 'Tipo_Atendimento', 'Pessoa Resp Aut', 'Status Aut Orç', 'Valor a Cobrar']].copy()
+                df_riohome_view.columns = ['Nº Atendimento', 'Paciente', 'ID Orçamento', 'Tipo', 'Responsável', 'Status Atual IW', 'Valor a Cobrar (R$)']
+                
+                buffer_rh = io.BytesIO()
+                with pd.ExcelWriter(buffer_rh, engine='xlsxwriter') as writer:
+                    df_riohome_view.to_excel(writer, sheet_name='RioHome Manual', index=False)
+                
+                st.download_button(
+                    label="📥 Baixar Planilha Separada RioHome (Excel)",
+                    data=buffer_rh.getvalue(),
+                    file_name="contrato_riohome_manual.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.dataframe(df_riohome_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
+
+        with aba7:
             st.markdown("### 🚨 Cadastros Incompletos / Erros no IW")
             df_erro_view = pacientes_com_erro[['Nr. Atendimento', 'Nome do Paciente', 'ID Orçam.', 'Nr. Matricula', 'Pessoa Resp Aut']].copy()
             df_erro_view.columns = ['Nº Atendimento', 'Paciente', 'ID Orçamento', 'Matrícula', 'Responsável']
