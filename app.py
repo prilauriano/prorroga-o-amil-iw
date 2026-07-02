@@ -112,7 +112,7 @@ st.markdown("""
         <h1 class="brand-title">Solar Cuidados — <span>Prorrogações</span></h1>
     </div>
 """, unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Módulo operacional integrado de auditoria Amil IW, monitoramento de prazos e mapeamento automático de inconsistências.</p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Módulo operacional integrado de auditoria Amil IW, monitoramento de prazos, volumetria ID/AD e controle de robô.</p>', unsafe_allow_html=True)
 
 # --- ÁREA DE UPLOAD ---
 col_up1, col_up2, col_up3 = st.columns(3)
@@ -140,7 +140,7 @@ if arquivos_amil:
         
         df = pd.concat(lista_dfs_amil, ignore_index=True)
         
-        # Identificação de colunas de justificativa ou status adicionais
+        # Identificação dinâmica das colunas secundárias
         col_justificativa = next((col for col in df.columns if 'justificativa' in col.lower() or 'pendencia' in col.lower()), None)
         col_status_rel = next((col for col in df.columns if 'status rel' in col.lower() or 'rel orç' in col.lower() or 'status_rel' in col.lower()), None)
         
@@ -188,32 +188,18 @@ if arquivos_amil:
 
         df['É_Robo'] = df.apply(verificar_flag_robo, axis=1)
 
-        # --- DETECÇÃO DE ERROS DE PREENCHIMENTO (MANDATÓRIO) ---
-        def avaliar_erros_preenchimento(linha):
-            motivos = []
-            # 1. Validação básica de chaves vazias
-            if len(linha['Nr. Matricula']) == 0 or linha['Nr. Matricula'] == 'nan':
-                motivos.append("Matrícula em branco")
-            if len(linha['Nr. Atendimento']) == 0 or linha['Nr. Atendimento'] == 'nan':
-                motivos.append("Nº Atendimento ausente")
-                
-            # 2. Validação dinâmica dos campos de Status de Relatório / Orçamento (Preenchido Errado)
+        # 🔥 CONSERTO: PEGAR APENAS PREENCHIMENTO DE "ARQUIVO NÃO ENCONTRADO"
+        def avaliar_erros_arquivo_nao_encontrado(linha):
             if col_status_rel:
                 valor_rel = str(linha[col_status_rel]).strip().lower()
-                if valor_rel == '' or valor_rel == 'nan' or valor_rel == 'null':
-                    motivos.append("Campo Status Rel Orç Vazio")
-                # Exemplo de captura de erro de digitação comum ou inconsistência por texto curto
-                elif len(valor_rel) < 3: 
-                    motivos.append(f"Preenchimento inválido no Status Rel: '{linha[col_status_rel]}'")
-            
-            if len(motivos) > 0:
-                return " | ".join(motivos)
+                if "arquivo não encontrado" in valor_rel or "arquivo nao encontrado" in valor_rel:
+                    return "Arquivo Não Encontrado"
             return "Sem Erros"
 
-        df['Inconsistencia_Erro'] = df.apply(avaliar_erros_preenchimento, axis=1)
-        df['Possui_Erro_Critico'] = df['Inconsistencia_Erro'] != "Sem Erros"
+        df['Inconsistencia_Erro'] = df.apply(avaliar_erros_arquivo_nao_encontrado, axis=1)
+        df['Possui_Erro_Critico'] = df['Inconsistencia_Erro'] == "Arquivo Não Encontrado"
 
-        # --- PROCESSAMENTO DA PLANILHA DE TO (PREVALÊNCIA) ---
+        # --- 📑 LEITURA DA PLANILHA DE TO (PREVALÊNCIA) ---
         atendimentos_resolvidos_to = set()
         if arquivos_to:
             for arq_to in arquivos_to:
@@ -230,8 +216,9 @@ if arquivos_amil:
                 if col_atend_to:
                     atendimentos_resolvidos_to.update(df_to_temp[col_atend_to].dropna().astype(str).str.strip().unique())
 
-        # --- PROCESSAMENTO DOS SETORES COM EXCLUSÃO DE TO ---
+        # --- ⚙️ PROCESSAMENTO DOS SETORES (RETIRANDO TO RESOLVIDO) ---
         atendimentos_pendentes_setores = set()
+        df_s_consolidado = pd.DataFrame()
         setores_agrupados = None
         
         if arquivos_setores:
@@ -253,6 +240,7 @@ if arquivos_amil:
                 df_s_consolidado['Nº Atendimento'] = df_s_consolidado['Nº Atendimento'].astype(str).str.strip()
                 df_s_consolidado['Grupo Especialidade'] = df_s_consolidado['Grupo Especialidade'].fillna('Outros').astype(str).str.strip()
                 
+                # Regra de exclusão: Se for TO e já estiver na lista de resolvidos, joga fora da pendência
                 def filtrar_prevalencia_to(linha):
                     if 'to' in str(linha['Grupo Especialidade']).lower() or 'terapia ocupacional' in str(linha['Grupo Especialidade']).lower():
                         if linha['Nº Atendimento'] in atendimentos_resolvidos_to:
@@ -281,15 +269,13 @@ if arquivos_amil:
             axis=1
         )
 
-        # 🔥 ISOLAMENTO DA BASE DE ERROS CRÍTICOS (Saindo de qualquer outra esteira de produção)
+        # Divisão das bases com base no filtro correto de erros e robô
         df_base_erros = df[df['Possui_Erro_Critico'] == True].copy()
         df_producao_limpa = df[df['Possui_Erro_Critico'] == False].copy()
 
-        # Divisão das bases limpas
         df_riohome = df_producao_limpa[df_producao_limpa['É_RioHome'] == True].copy()
         df_faturamento_geral = df_producao_limpa[df_producao_limpa['É_RioHome'] == False].copy()
 
-        # Isolamento da Base do Robô (Livre de erros)
         df_fila_robo = df_faturamento_geral[df_faturamento_geral['É_Robo'] == True].copy()
         df_faturamento_geral_sem_robo = df_faturamento_geral[df_faturamento_geral['É_Robo'] == False].copy()
 
@@ -300,9 +286,10 @@ if arquivos_amil:
         df_prontuario = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Status Aut Orç'] == 'Prontuário Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
         df_ops = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Status Aut Orç'] == 'OPS Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
 
-        # Indicadores globais
+        # Indicadores globais (REPOSITOR DO VALOR REPRESADO DO INÍCIO)
         total_pacientes_iw = len(df)
         inseridos = df_producao_limpa['Inserido_Amil'].sum()
+        # Valor represado considerando tudo que falta inserir do faturamento geral humano
         valor_total_pendente = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Inserido_Amil'] == False]['Valor a Cobrar'].sum()
 
         # --- ABAS DO DASHBOARD ---
@@ -314,7 +301,7 @@ if arquivos_amil:
             "🚀 Liberados para Input",
             "🤖 Liberados para o Robô",
             "🏠 Contrato RioHome (Manual)", 
-            "🚨 Alertas de Erro" # <-- Foco na tratativa dinâmica de erros
+            "🚨 Alertas de Erro"
         ])
         
         with aba1:
@@ -324,10 +311,10 @@ if arquivos_amil:
             card2.metric("✅ Inseridos", f"{inseridos}")
             card3.metric("⏳ Pendentes Operação", f"{len(df_prontuario) + len(df_ops)}")
             card4.metric("🤖 Fila do Robô", f"{len(df_fila_robo)}")
-            card5.metric("🚨 Total com Erros", f"{len(df_base_erros)}")
+            card5.metric("💰 Represado Total", f"R$ {valor_total_pendente:,.2f}") # <-- Retornado com Sucesso!
             
             if len(df_base_erros) > 0:
-                st.warning(f"⚠️ Atenção: Detectamos {len(df_base_erros)} registros com inconformidades de preenchimento. Verifique a aba de erros.")
+                st.warning(f"⚠️ Atenção: Detectamos {len(df_base_erros)} arquivos não encontrados cadastrados.")
 
         with aba2:
             st.markdown("### 👤 Produtividade e Carga Operacional")
@@ -362,6 +349,18 @@ if arquivos_amil:
 
         with aba4:
             st.markdown("### 📋 Lista de Pendências Ordenadas pelos Maiores Valores")
+            
+            # 🔥 RETORNO DO GRÁFICO DE PENDÊNCIAS POR SETOR
+            if not df_s_consolidado.empty and 'Grupo Especialidade' in df_s_consolidado.columns:
+                st.markdown("#### 📊 Distribuição Histórica de Pendências Técnicas por Setor")
+                contagem_setores = df_s_consolidado['Grupo Especialidade'].value_counts().reset_index()
+                contagem_setores.columns = ['Setor/Especialidade', 'Volume de Pendências']
+                fig_setores = px.bar(contagem_setores, x='Setor/Especialidade', y='Volume de Pendências', 
+                                     color='Volume de Pendências', color_continuous_scale='Reds',
+                                     text_auto=True)
+                fig_setores.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=10, b=10, l=10, r=10))
+                st.plotly_chart(fig_setores, use_container_width=True)
+                
             tab_p, tab_o = st.tabs(["📄 Prontuário Pendente", "🏢 OPS Pendente (Operação)"])
             
             with tab_p:
@@ -369,15 +368,47 @@ if arquivos_amil:
                 df_p_view = df_prontuario[['Nr. Atendimento', 'Nome do Paciente', 'ID Orçam.', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
                 df_p_view.columns = ['Nº Atendimento', 'Paciente', 'ID Orçamento', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
                 
+                # 🔥 RETORNO DO BOTÃO DE BAIXAR PLANILHA ESTRUTURADA (IGUAL DO SITE)
                 buffer_p = io.BytesIO()
                 with pd.ExcelWriter(buffer_p, engine='xlsxwriter') as writer:
                     df_p_view.to_excel(writer, sheet_name='Prontuário Pendente', index=False)
+                    workbook  = writer.book
+                    worksheet = writer.sheets['Prontuário Pendente']
+                    format_money = workbook.add_format({'num_format': 'R$ #,##0.00'})
+                    worksheet.set_column('G:G', 18, format_money)
+                    worksheet.set_column('A:F', 22)
+                
+                st.download_button(
+                    label="📥 Baixar Planilha Estruturada: Prontuário Pendente",
+                    data=buffer_p.getvalue(),
+                    file_name="prontuario_pendente_estruturado.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                st.markdown("---")
                 st.dataframe(df_p_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
                 
             with tab_o:
                 st.markdown(f"**Total de Processos: {len(df_ops)} | Montante: R$ {df_ops['Valor a Cobrar'].sum():,.2f}**")
                 df_o_view = df_ops[['Nr. Atendimento', 'Nome do Paciente', 'ID Orçam.', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
                 df_o_view.columns = ['Nº Atendimento', 'Paciente', 'ID Orçamento', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
+                
+                # 🔥 RETORNO DO BOTÃO DE BAIXAR PLANILHA ESTRUTURADA DE OPS
+                buffer_o = io.BytesIO()
+                with pd.ExcelWriter(buffer_o, engine='xlsxwriter') as writer:
+                    df_o_view.to_excel(writer, sheet_name='OPS Pendente', index=False)
+                    workbook  = writer.book
+                    worksheet = writer.sheets['OPS Pendente']
+                    format_money = workbook.add_format({'num_format': 'R$ #,##0.00'})
+                    worksheet.set_column('G:G', 18, format_money)
+                    worksheet.set_column('A:F', 22)
+                
+                st.download_button(
+                    label="📥 Baixar Planilha Estruturada: Pendências da Operação",
+                    data=buffer_o.getvalue(),
+                    file_name="ops_pendente_estruturado.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                st.markdown("---")
                 st.dataframe(df_o_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
         with aba5:
@@ -406,32 +437,22 @@ if arquivos_amil:
             df_riohome_view.columns = ['Nº Atendimento', 'Paciente', 'ID Orçamento', 'Tipo', 'Responsável', 'Status Atual IW', 'Valor a Cobrar (R$)']
             st.dataframe(df_riohome_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
-        # 🔥 ABA DE ERROS ATUALIZADA E DINÂMICA
         with aba7:
-            st.markdown("### 🚨 Relatório Dinâmico de Inconsistências de Preenchimento")
-            st.markdown("Esta aba exibe registros que possuem erros estruturais nas planilhas, campos em branco ou dados incorretos em campos chaves como Status Rel Orç.")
+            st.markdown("### 🚨 Alertas de Erro: Arquivo Não Encontrado")
+            st.markdown("Registros mapeados cujo preenchimento no campo de status de relatório acusa impossibilidade de leitura.")
             
             if len(df_base_erros) > 0:
-                # Montando a visualização focada no diagnóstico para o usuário corrigir no IW
                 colunas_erro = ['Nr. Atendimento', 'Nome do Paciente', 'Inconsistencia_Erro', 'Status Aut Orç', 'Pessoa Resp Aut']
                 if col_status_rel: colunas_erro.append(col_status_rel)
                 
                 df_erro_print = df_base_erros[colunas_erro].copy()
-                colunas_visualizacao = ['Nº Atendimento', 'Paciente', '🚨 Motivo da Inconsistência', 'Status Atual Aut', 'Responsável']
-                if col_status_rel: colunas_visualizacao.append('Valor Campo Status Rel')
+                colunas_visualizacao = ['Nº Atendimento', 'Paciente', '🚨 Status do Erro', 'Status Aut Orç', 'Responsável']
+                if col_status_rel: colunas_visualizacao.append('Texto Capturado no Campo')
                 
                 df_erro_print.columns = colunas_visualizacao
-                
-                # Botão de download para ajudar a equipe a corrigir a base
-                buffer_err = io.BytesIO()
-                with pd.ExcelWriter(buffer_err, engine='xlsxwriter') as writer:
-                    df_erro_print.to_excel(writer, sheet_name='Erros Diagnósticos', index=False)
-                st.download_button(label="📥 Baixar Relatório de Erros para Correção", data=buffer_err.getvalue(), file_name="relatorio_erros_preenchimento.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                
-                st.markdown("---")
                 st.dataframe(df_erro_print, use_container_width=True, hide_index=True)
             else:
-                st.success("✨ Excelente! Nenhuma inconsistência de preenchimento ou campo nulo/errado foi detectada nas planilhas carregadas.")
+                st.success("✨ Excelente! Nenhum erro de 'Arquivo Não Encontrado' foi detectado.")
                     
     except Exception as e:
         st.error(f"Erro ao processar os arquivos. Detalhe técnico: {e}")
