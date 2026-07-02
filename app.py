@@ -114,12 +114,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 st.markdown('<p class="subtitle">Módulo operacional integrado de auditoria Amil IW, monitoramento de prazos, volumetria ID/AD e controle de robô.</p>', unsafe_allow_html=True)
 
-# --- ÁREA DE UPLOAD (NOMES ATUALIZADOS) ---
+# --- ÁREA DE UPLOAD ---
 col_up1, col_up2, col_up3 = st.columns(3)
 with col_up1:
-    arquivos_amil = st.file_uploader("1 - PRORROGAÇÃO (.csv/.xlsx)", type=["csv", "xlsx"], accept_multiple_files=True)
+    arquivos_amil = st.file_uploader("1 - PLANILHA PRORROGAÇÃO (.csv/.xlsx)", type=["csv", "xlsx"], accept_multiple_files=True)
 with col_up2:
-    arquivos_setores = st.file_uploader("2 - RELATÓRIOS DAS ESPECIALIDADES (.csv/.xlsx)", type=["csv", "xlsx"], accept_multiple_files=True)
+    arquivos_setores = st.file_uploader("2 - RELATÓRIOS DAS ESPECILIDADES (.csv/.xlsx)", type=["csv", "xlsx"], accept_multiple_files=True)
 with col_up3:
     arquivos_to = st.file_uploader("3 - PACIENTES TO COM EVOLUÇÃO (.csv/.xlsx)", type=["csv", "xlsx"], accept_multiple_files=True)
 
@@ -166,39 +166,41 @@ if arquivos_amil:
             except: return 0.0
 
         df['Valor a Cobrar'] = df['Valor a Cobrar'].apply(converter_moeda_br)
+        
+        # Tratamento preciso de ID e AD considerando prefixos da classificação do IW
         df['Tipo_Atendimento'] = df['Classific. Atendimento'].apply(
-            lambda x: 'ID (Internação Domiciliar)' if x.startswith('ID') else ('AD (Atenção Domiciliar)' if x.startswith('AD') else 'Outros')
+            lambda x: 'ID (Internação Domiciliar)' if str(x).strip().upper().startswith('ID') else ('AD (Atenção Domiciliar)' if str(x).strip().upper().startswith('AD') else 'Outros')
         )
 
         guia_valida_numerica = df['Nº Guia Solicitação (TISS)'].str.isnumeric()
         df['Inserido_Amil'] = (guia_valida_numerica) | (df['Senha Aprovação'] != '') | (df['Status Aut Orç'] == 'Autorizado')
 
-        # --- NOVA REGRA COMPLETA DE ENTENDIMENTO DE IMPUTS DO ROBÔ E MANUAL ---
+        # --- CONSERTO DA TRATATIVA STRINGS DO ROBÔ E MANUAL ---
         def analisar_tipo_input(linha):
             has_guia = str(linha['Nº Guia Solicitação (TISS)']).isnumeric()
             status_aut = str(linha['Status Aut Orç']).strip().lower()
             
             just_txt = ""
             if col_justificativa:
+                # Normaliza texto para evitar quebra por falta de acentuação ou espaços duplos
                 just_txt = str(linha[col_justificativa]).strip().lower()
+                just_txt = re.sub(r'\s+', ' ', just_txt).replace('ê', 'e').replace('â', 'a')
             
-            # Condição 1: Inputado por Robô
-            if has_guia and status_aut == "em análise" and "operadora: robô em analise" in just_txt:
-                return "Robô"
-            # Condição 2: Inputado Manualmente
-            elif has_guia and status_aut == "em análise" and "operadora: manual em analise" in just_txt:
-                return "Manual"
+            if has_guia and (status_aut == "em analise" or status_aut == "em análise"):
+                if "operadora: robo em analise" in just_txt or "operadora: robo em婉nalise" in just_txt or "robo em analise" in just_txt:
+                    return "Robô"
+                elif "operadora: manual em analise" in just_txt or "manual em analise" in just_txt:
+                    return "Manual"
             return "Outro"
 
         df['Origem_Input_Calculado'] = df.apply(analisar_tipo_input, axis=1)
 
-        # Regra retroativa para o Robo Tradicional da Fila Técnica (Caso existam flags antigas)
         def verificar_flag_robo_geral(linha):
             if linha['Origem_Input_Calculado'] == "Robô":
                 return True
             status_aut = str(linha['Status Aut Orç']).lower()
-            condicao_status = ('lib.' in status_aut and 'robô' in status_aut) or ('robô' in status_aut or 'robo' in status_aut)
-            condicao_resp = any(r in str(linha['Pessoa Resp Aut']).lower() for r in ['robô', 'robo', 'robot'])
+            condicao_status = ('lib.' in status_aut and 'robo' in status_aut) or ('robo' in status_aut)
+            condicao_resp = any(r in str(linha['Pessoa Resp Aut']).lower() for r in ['robo', 'robot'])
             return condicao_status or condicao_resp
 
         df['É_Robo'] = df.apply(verificar_flag_robo_geral, axis=1)
@@ -254,11 +256,13 @@ if arquivos_amil:
             if 'Nº Atendimento' in df_s_consolidado.columns:
                 df_s_consolidado['Nº Atendimento'] = df_s_consolidado['Nº Atendimento'].astype(str).str.strip()
                 df_s_consolidado['Grupo Especialidade'] = df_s_consolidado['Grupo Especialidade'].fillna('Outros').astype(str).str.strip()
-                df_s_consolidado['Valor do Item'] = df_s_consolidado.get('Valor do Item', 0.0)
-                if df_s_consolidado['Valor do Item'].dtype == object:
-                    df_s_consolidado['Valor do Item'] = df_s_consolidado['Valor do Item'].apply(converter_moeda_br)
                 
-                # Regra de exclusão da TO ativa
+                col_valor_item = next((col for col in df_s_consolidado.columns if 'valor' in col.lower() or 'item' in col.lower() or 'cobrar' in col.lower()), None)
+                if col_valor_item:
+                    df_s_consolidado['Valor_Calculado_Setor'] = df_s_consolidado[col_valor_item].apply(converter_moeda_br)
+                else:
+                    df_s_consolidado['Valor_Calculado_Setor'] = 0.0
+                
                 def filtrar_prevalencia_to(linha):
                     if 'to' in str(linha['Grupo Especialidade']).lower() or 'terapia ocupacional' in str(linha['Grupo Especialidade']).lower():
                         if linha['Nº Atendimento'] in atendimentos_resolvidos_to:
@@ -287,7 +291,6 @@ if arquivos_amil:
             axis=1
         )
 
-        # Divisão estruturada das tabelas
         df_base_erros = df[df['Possui_Erro_Critico'] == True].copy()
         df_producao_limpa = df[df['Possui_Erro_Critico'] == False].copy()
 
@@ -336,23 +339,19 @@ if arquivos_amil:
             st.markdown("### 👤 Carga Operacional e Rastreabilidade de Inputs (Robô vs Manual)")
             
             col_responsavel = 'Pessoa Resp Aut'
-            col_paciente = 'Nome do Paciente'
             
-            # Criando métricas agrupadas por Pessoa Responsável (Contabilizando a ação do robô para quem programou)
-            df_unicos = df_producao_limpa.drop_duplicates(subset=[col_responsavel, col_paciente]).copy()
-            df_unicos['Qtd_ID'] = df_unicos['Tipo_Atendimento'] == 'ID (Internação Domiciliar)'
-            df_unicos['Qtd_AD'] = df_unicos['Tipo_Atendimento'] == 'AD (Atenção Domiciliar)'
+            # CONSERTO: Mapeamento de contagem total por linha para não perder volumetria de ID/AD
+            df_producao_limpa['Qtd_ID'] = df_producao_limpa['Tipo_Atendimento'] == 'ID (Internação Domiciliar)'
+            df_producao_limpa['Qtd_AD'] = df_producao_limpa['Tipo_Atendimento'] == 'AD (Atenção Domiciliar)'
+            df_producao_limpa['Robo_Rodado'] = df_producao_limpa['Origem_Input_Calculado'] == "Robô"
+            df_producao_limpa['Manual_Rodado'] = df_producao_limpa['Origem_Input_Calculado'] == "Manual"
             
-            # Quantificações por método de input associado ao analista
-            df_unicos['Robo_Rodado'] = df_unicos['Origem_Input_Calculado'] == "Robô"
-            df_unicos['Manual_Rodado'] = df_unicos['Origem_Input_Calculado'] == "Manual"
-            
-            prod_colab = df_unicos.groupby(col_responsavel).agg(
+            prod_colab = df_producao_limpa.groupby(col_responsavel).agg(
                 Pacientes_ID=('Qtd_ID', 'sum'), 
                 Pacientes_AD=('Qtd_AD', 'sum'),
                 Inputs_pelo_Robo=('Robo_Rodado', 'sum'),
                 Inputs_Manuais=('Manual_Rodado', 'sum'),
-                Total_Geral_Pacientes=(col_paciente, 'count')
+                Total_Geral_Pacientes=('Nome do Paciente', 'count')
             ).reset_index()
             
             prod_colab.columns = ['Colaborador (Responsável)', 'Nº Pacientes ID', 'Nº Pacientes AD', 'Inputs Concluídos p/ Robô', 'Inputs Concluídos Manuais', 'Quantitativo Total de Pacientes']
@@ -366,47 +365,39 @@ if arquivos_amil:
         with aba4:
             st.markdown("### 📋 Lista de Pendências Ordenadas pelos Maiores Valores")
             
-            # 🔥 EXIBIÇÃO LADO A LADO DOS DOIS GRÁFICOS (QUANTIDADE VS VALOR FINANCEIRO)
+            # 🔥 CONSERTO: GRÁFICOS DISPOSTOS UM ABAIXO DO OUTRO VERTICALMENTE
             if not df_s_consolidado.empty and 'Grupo Especialidade' in df_s_consolidado.columns:
-                g_col1, g_col2 = st.columns(2)
+                st.markdown("#### 📊 Distribuição de Pendências Técnicas (Quantidade)")
+                contagem_setores = df_s_consolidado['Grupo Especialidade'].value_counts().reset_index()
+                contagem_setores.columns = ['Setor/Especialidade', 'Volume de Pendências']
+                fig_setores = px.bar(contagem_setores, x='Setor/Especialidade', y='Volume de Pendências', 
+                                     color='Volume de Pendências', color_continuous_scale='Reds', text_auto=True)
+                fig_setores.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=10, b=10, l=10, r=10))
+                st.plotly_chart(fig_setores, use_container_width=True)
                 
-                with g_col1:
-                    st.markdown("#### 📊 Distribuição de Pendências Técnicas (Quantidade)")
-                    contagem_setores = df_s_consolidado['Grupo Especialidade'].value_counts().reset_index()
-                    contagem_setores.columns = ['Setor/Especialidade', 'Volume de Pendências']
-                    fig_setores = px.bar(contagem_setores, x='Setor/Especialidade', y='Volume de Pendências', 
-                                         color='Volume de Pendências', color_continuous_scale='Reds', text_auto=True)
-                    fig_setores.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=10, b=10, l=10, r=10))
-                    st.plotly_chart(fig_setores, use_container_width=True)
+                st.markdown("#### 💰 Impacto Financeiro Represado por Setor (Valores)")
+                financeiro_setores = df_s_consolidado.groupby('Grupo Especialidade')['Valor_Calculado_Setor'].sum().reset_index()
+                financeiro_setores.columns = ['Setor/Especialidade', 'Valor Represado (R$)']
+                financeiro_setores = financeiro_setores.sort_values(by='Valor Represado (R$)', ascending=False)
                 
-                with g_col2:
-                    st.markdown("#### 💰 Impacto Financeiro Represado por Setor (Valores)")
-                    financeiro_setores = df_s_consolidado.groupby('Grupo Especialidade')['Valor do Item'].sum().reset_index()
-                    financeiro_setores.columns = ['Setor/Especialidade', 'Valor Represado (R$)']
-                    financeiro_setores = financeiro_setores.sort_values(by='Valor Represado (R$)', ascending=False)
-                    fig_valores = px.bar(financeiro_setores, x='Setor/Especialidade', y='Valor Represado (R$)', 
-                                         color='Valor Represado (R$)', color_continuous_scale='Oryel', text_auto='.2s')
-                    fig_valores.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=10, b=10, l=10, r=10))
-                    st.plotly_chart(fig_valores, use_container_width=True)
+                # Se houver valores válidos cadastrados, exibe o gráfico financeiro completo
+                fig_valores = px.bar(financeiro_setores, x='Setor/Especialidade', y='Valor Represado (R$)', 
+                                     color='Valor Represado (R$)', color_continuous_scale='Oryel', text_auto='.2s')
+                fig_valores.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=10, b=10, l=10, r=10))
+                st.plotly_chart(fig_valores, use_container_width=True)
                 
             tab_p, tab_o = st.tabs(["📄 Prontuário Pendente", "🏢 OPS Pendente (Operação)"])
             
             with tab_p:
                 st.markdown(f"**Total de Processos: {len(df_prontuario)} | Montante: R$ {df_prontuario['Valor a Cobrar'].sum():,.2f}**")
                 
-                # 🔥 MODIFICAÇÃO: Nº ATENDIMENTO DO LADO DO ID ORÇAM.
-                df_p_view = df_prontuario[['Nome do Paciente', 'Nr. Atendimento', 'ID Orçam.', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
-                df_p_view.columns = ['Paciente', 'Nº Atendimento', 'ID Orçamento', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
+                # 🔥 CONSERTO: ID ATEND E ID ORÇ VENDE ANTES DO NOME DO PACIENTE
+                df_p_view = df_prontuario[['Nr. Atendimento', 'ID Orçam.', 'Nome do Paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
+                df_p_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
                 
                 buffer_p = io.BytesIO()
                 with pd.ExcelWriter(buffer_p, engine='xlsxwriter') as writer:
                     df_p_view.to_excel(writer, sheet_name='Prontuário Pendente', index=False)
-                    workbook  = writer.book
-                    worksheet = writer.sheets['Prontuário Pendente']
-                    format_money = workbook.add_format({'num_format': 'R$ #,##0.00'})
-                    worksheet.set_column('G:G', 18, format_money)
-                    worksheet.set_column('A:F', 22)
-                
                 st.download_button(
                     label="📥 Baixar Planilha Estruturada: Prontuário Pendente",
                     data=buffer_p.getvalue(),
@@ -419,19 +410,13 @@ if arquivos_amil:
             with tab_o:
                 st.markdown(f"**Total de Processos: {len(df_ops)} | Montante: R$ {df_ops['Valor a Cobrar'].sum():,.2f}**")
                 
-                # 🔥 MODIFICAÇÃO: Nº ATENDIMENTO DO LADO DO ID ORÇAM.
-                df_o_view = df_ops[['Nome do Paciente', 'Nr. Atendimento', 'ID Orçam.', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
-                df_o_view.columns = ['Paciente', 'Nº Atendimento', 'ID Orçamento', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
+                # 🔥 CONSERTO: ID ATEND E ID ORÇ VENDE ANTES DO NOME DO PACIENTE
+                df_o_view = df_ops[['Nr. Atendimento', 'ID Orçam.', 'Nome do Paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
+                df_o_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
                 
                 buffer_o = io.BytesIO()
                 with pd.ExcelWriter(buffer_o, engine='xlsxwriter') as writer:
                     df_o_view.to_excel(writer, sheet_name='OPS Pendente', index=False)
-                    workbook  = writer.book
-                    worksheet = writer.sheets['OPS Pendente']
-                    format_money = workbook.add_format({'num_format': 'R$ #,##0.00'})
-                    worksheet.set_column('G:G', 18, format_money)
-                    worksheet.set_column('A:F', 22)
-                
                 st.download_button(
                     label="📥 Baixar Planilha Estruturada: Pendências da Operação",
                     data=buffer_o.getvalue(),
@@ -448,9 +433,9 @@ if arquivos_amil:
             else:
                 st.markdown(f"**🔥 Total Prontos para Input: {len(df_liberados)} | Valor de Giro Rápido: R$ {df_liberados['Valor a Cobrar'].sum():,.2f}**")
                 
-                # 🔥 MODIFICAÇÃO: Nº ATENDIMENTO DO LADO DO ID ORÇAM.
-                df_liberados_clean_excel = df_liberados[['Nome do Paciente', 'Nr. Atendimento', 'ID Orçam.', 'Tipo_Atendimento', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
-                df_liberados_clean_excel.columns = ['Paciente', 'Nº Atendimento', 'ID Orçamento', 'Tipo Atendimento', 'Responsável', 'Valor a Cobrar (R$)']
+                # 🔥 CONSERTO: ID ATEND E ID ORÇ VENDE ANTES DO NOME DO PACIENTE
+                df_liberados_clean_excel = df_liberados[['Nr. Atendimento', 'ID Orçam.', 'Nome do Paciente', 'Tipo_Atendimento', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
+                df_liberados_clean_excel.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo Atendimento', 'Responsável', 'Valor a Cobrar (R$)']
                 st.dataframe(df_liberados_clean_excel.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
         with aba_r:
@@ -458,9 +443,9 @@ if arquivos_amil:
             st.markdown(f"**Volumetria Atual do Robô: {len(df_fila_robo)} pacientes na fila.**")
             if len(df_fila_robo) > 0:
                 
-                # 🔥 MODIFICAÇÃO: Nº ATENDIMENTO DO LADO DO ID ORÇAM.
-                df_robo_view = df_fila_robo[['Nome do Paciente', 'Nr. Atendimento', 'ID Orçam.', 'Tipo_Atendimento', 'Status Aut Orç', 'Valor a Cobrar']].copy()
-                df_robo_view.columns = ['Paciente', 'Nº Atendimento', 'ID Orçamento', 'Tipo', 'Status Atual', 'Valor a Cobrar (R$)']
+                # 🔥 CONSERTO: ID ATEND E ID ORÇ VENDE ANTES DO NOME DO PACIENTE
+                df_robo_view = df_fila_robo[['Nr. Atendimento', 'ID Orçam.', 'Nome do Paciente', 'Tipo_Atendimento', 'Status Aut Orç', 'Valor a Cobrar']].copy()
+                df_robo_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Status Atual', 'Valor a Cobrar (R$)']
                 st.dataframe(df_robo_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
             else:
                 st.info("💡 Nenhum paciente aguardando ou liberado para o robô detectado.")
@@ -468,9 +453,9 @@ if arquivos_amil:
         with aba6:
             st.markdown("### 🏠 Listagem Isolada — Contrato RioHome")
             
-            # 🔥 MODIFICAÇÃO: Nº ATENDIMENTO DO LADO DO ID ORÇAM.
-            df_riohome_view = df_riohome[['Nome do Paciente', 'Nr. Atendimento', 'ID Orçam.', 'Tipo_Atendimento', 'Pessoa Resp Aut', 'Status Aut Orç', 'Valor a Cobrar']].copy()
-            df_riohome_view.columns = ['Paciente', 'Nº Atendimento', 'ID Orçamento', 'Tipo', 'Responsável', 'Status Atual IW', 'Valor a Cobrar (R$)']
+            # 🔥 CONSERTO: ID ATEND E ID ORÇ VENDE ANTES DO NOME DO PACIENTE
+            df_riohome_view = df_riohome[['Nr. Atendimento', 'ID Orçam.', 'Nome do Paciente', 'Tipo_Atendimento', 'Pessoa Resp Aut', 'Status Aut Orç', 'Valor a Cobrar']].copy()
+            df_riohome_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Responsável', 'Status Atual IW', 'Valor a Cobrar (R$)']
             st.dataframe(df_riohome_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
         with aba7:
@@ -478,13 +463,13 @@ if arquivos_amil:
             st.markdown("Registros mapeados cujo preenchimento no campo de status de relatório acusa impossibilidade de leitura.")
             
             if len(df_base_erros) > 0:
-                # 🔥 MODIFICAÇÃO: Nº ATENDIMENTO DO LADO DO ID ORÇAM.
-                colunas_erro = ['Nome do Paciente', 'Nr. Atendimento', 'Status Aut Orç', 'Pessoa Resp Aut']
-                if col_status_rel: colunas_erro.insert(2, col_status_rel)
+                # 🔥 CONSERTO: ID ATEND E ID ORÇ VENDE ANTES DO NOME DO PACIENTE
+                colunas_erro = ['Nr. Atendimento', 'ID Orçam.', 'Nome do Paciente', 'Status Aut Orç', 'Pessoa Resp Aut']
+                if col_status_rel: colunas_erro.insert(3, col_status_rel)
                 
                 df_erro_print = df_base_erros[colunas_erro].copy()
-                colunas_visualizacao = ['Paciente', 'Nº Atendimento', 'Status Aut Orç', 'Responsável']
-                if col_status_rel: colunas_visualizacao.insert(2, 'Texto Capturado no Campo')
+                colunas_visualizacao = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Status Aut Orç', 'Responsável']
+                if col_status_rel: colunas_visualizacao.insert(3, 'Texto Capturado no Campo')
                 
                 df_erro_print.columns = colunas_visualizacao
                 st.dataframe(df_erro_print, use_container_width=True, hide_index=True)
