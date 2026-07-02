@@ -159,11 +159,19 @@ if arquivos_amil:
         
         df['Nr. Atendimento'] = df['Nr. Atendimento'].fillna('').astype(str).str.strip()
         
+        # TRATAMENTO DE MOEDA BLINDADO CONTRA ERRO DE MULTIPLICAÇÃO DE PONTOS
         def converter_moeda_br(valor):
-            valor_str = str(valor).strip()
-            if not valor_str or valor_str.lower() == 'nan': return 0.0
-            if re.search(r',\d{2}$', valor_str): valor_str = valor_str.replace('.', '').replace(',', '.')
-            else: valor_str = valor_str.replace('.', '').replace(',', '.')
+            if pd.isna(valor): return 0.0
+            valor_str = str(valor).strip().upper().replace('R$', '').strip()
+            if not valor_str or valor_str == 'NAN' or valor_str == '': return 0.0
+            
+            # Se tiver ponto como milhar e vírgula como decimal (padrão brasileiro: 1.500,22)
+            if ',' in valor_str and '.' in valor_str:
+                if valor_str.find('.') < valor_str.find(','):
+                    valor_str = valor_str.replace('.', '').replace(',', '.')
+            elif ',' in valor_str:  # Apenas vírgula decimal (ex: 1500,22)
+                valor_str = valor_str.replace(',', '.')
+                
             try: return float(valor_str)
             except: return 0.0
 
@@ -254,6 +262,7 @@ if arquivos_amil:
                 df_s_consolidado['Nº Atendimento'] = df_s_consolidado['Nº Atendimento'].astype(str).str.strip()
                 df_s_consolidado['Grupo Especialidade'] = df_s_consolidado['Grupo Especialidade'].fillna('Outros').astype(str).str.strip()
                 
+                # Tratando o valor interno da planilha de setores de forma isolada
                 col_valor_item = next((col for col in df_s_consolidado.columns if 'valor' in col.lower() or 'item' in col.lower() or 'cobrar' in col.lower()), None)
                 if col_valor_item:
                     df_s_consolidado['Valor_Calculado_Setor'] = df_s_consolidado[col_valor_item].apply(converter_moeda_br)
@@ -304,12 +313,13 @@ if arquivos_amil:
         df_prontuario = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Status Aut Orç'] == 'Prontuário Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
         df_ops = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Status Aut Orç'] == 'OPS Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
 
-        # Métricas globais
+        # MÉTRICAS FINANCEIRAS CORRIGIDAS (Amil IW pura)
         total_pacientes_iw = len(df)
         inseridos_count = df_producao_limpa['Inserido_Amil'].sum()
+        
         valor_total_todos_pacientes = df['Valor a Cobrar'].sum()
         
-        # Correção Exata do Card 5 conforme homologado
+        # Puxa o valor correto somando apenas os pacientes mapeados da Amil com pendência ativa
         valor_total_pendencias_setores = df[df['Tem_Pendencia_Setor'] == True]['Valor a Cobrar'].sum()
 
         # --- ABAS DO DASHBOARD ---
@@ -339,7 +349,6 @@ if arquivos_amil:
 
         with aba2:
             st.markdown("### 👤 Carga Operacional e Rastreabilidade de Inputs (Robô vs Manual)")
-            
             col_responsavel = 'Pessoa Resp Aut'
             
             df_producao_limpa['Valor_ID'] = df_producao_limpa.apply(lambda r: r['Valor a Cobrar'] if r['Is_ID'] else 0.0, axis=1)
@@ -358,14 +367,9 @@ if arquivos_amil:
             ).reset_index()
             
             prod_colab.columns = [
-                'Colaborador (Responsável)', 
-                'Nº Pacientes ID', 
-                'Nº Pacientes AD', 
-                'Valor Total de ID (R$)', 
-                'Valor Total de AD (R$)', 
-                'Inputs Concluídos p/ Robô', 
-                'Inputs Concluídos Manuais', 
-                'Quantitativo Total'
+                'Colaborador (Responsável)', 'Nº Pacientes ID', 'Nº Pacientes AD', 
+                'Valor Total de ID (R$)', 'Valor Total de AD (R$)', 
+                'Inputs Concluídos p/ Robô', 'Inputs Concluídos Manuais', 'Quantitativo Total'
             ]
             
             st.dataframe(
@@ -373,8 +377,7 @@ if arquivos_amil:
                     'Valor Total de ID (R$)': 'R$ {:,.2f}',
                     'Valor Total de AD (R$)': 'R$ {:,.2f}'
                 }), 
-                use_container_width=True, 
-                hide_index=True
+                use_container_width=True, hide_index=True
             )
 
         with aba3:
@@ -385,20 +388,18 @@ if arquivos_amil:
         with aba4:
             st.markdown("### 📋 Lista de Pendências Ordenadas pelos Maiores Valores")
             
-            # 🔥 BLINDAGEM CONTRA O ERRO DE COLUNAS DO PLOTLY:
             if not df_s_consolidado.empty and 'Grupo Especialidade' in df_s_consolidado.columns:
                 try:
                     st.markdown("#### 📊 Distribuição de Pendências Técnicas (Quantidade)")
                     contagem_setores = df_s_consolidado['Grupo Especialidade'].value_counts().reset_index()
-                    # Garante nomes compatíveis com versões antigas e novas do pandas (.reset_index())
                     contagem_setores.columns = ['Setor_Especialidade', 'Volume de Pendências']
                     
                     fig_setores = px.bar(contagem_setores, x='Setor_Especialidade', y='Volume de Pendências', 
                                          color='Volume de Pendências', color_continuous_scale='Reds', text_auto=True)
                     fig_setores.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=10, b=10, l=10, r=10))
                     st.plotly_chart(fig_setores, use_container_width=True)
-                except Exception as chart_err1:
-                    st.info("💡 Não foi possível renderizar o gráfico volumétrico com a estrutura atual deste arquivo.")
+                except:
+                    st.info("💡 Gráfico volumétrico temporariamente indisponível para este layout.")
 
                 try:
                     st.markdown("#### 💰 Impacto Financeiro Represado por Setor (Valores)")
@@ -410,8 +411,8 @@ if arquivos_amil:
                                          color='Valor Represado', color_continuous_scale='Oryel', text_auto='R$ ,.2f')
                     fig_valores.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=10, b=10, l=10, r=10))
                     st.plotly_chart(fig_valores, use_container_width=True)
-                except Exception as chart_err2:
-                    st.info("💡 Não foi possível renderizar o gráfico financeiro com a estrutura atual deste arquivo.")
+                except:
+                    st.info("💡 Gráfico financeiro temporariamente indisponível para este layout.")
                 
             tab_p, tab_o = st.tabs(["📄 Prontuário Pendente", "🏢 OPS Pendente (Operação)"])
             
