@@ -112,7 +112,7 @@ st.markdown("""
         <h1 class="brand-title">Solar Cuidados — <span>Prorrogações</span></h1>
     </div>
 """, unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Módulo operacional integrado de auditoria Amil IW, monitoramento de prazos, volumetria ID/AD e controle de robô com prevalência de TO.</p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Módulo operacional integrado de auditoria Amil IW, monitoramento de prazos, volumetria ID/AD e controle de robô com prevalência técnica de TO.</p>', unsafe_allow_html=True)
 
 # --- ÁREA DE UPLOAD ---
 col_up1, col_up2, col_up3 = st.columns(3)
@@ -159,7 +159,7 @@ if arquivos_amil:
         
         df['Nr. Atendimento'] = df['Nr. Atendimento'].fillna('').astype(str).str.strip()
         
-        # TRATAMENTO DE MOEDA BLINDADO
+        # TRATAMENTO DE MOEDA
         def converter_moeda_br(valor):
             if pd.isna(valor): return 0.0
             valor_str = str(valor).strip().upper().replace('R$', '').strip()
@@ -216,7 +216,7 @@ if arquivos_amil:
         df['Inconsistencia_Erro'] = df.apply(avaliar_erros_arquivo_nao_encontrado, axis=1)
         df['Possui_Erro_Critico'] = df['Inconsistencia_Erro'] == "Arquivo Não Encontrado"
 
-        # --- 📑 LEITURA DA PLANILHA 3 (TO COM EVOLUÇÃO / LIBERAÇÕES) ---
+        # --- 📑 LEITURA DA PLANILHA 3 (TO COM EVOLUÇÃO) ---
         atendimentos_resolvidos_to = set()
         if arquivos_to:
             for arq_to in arquivos_to:
@@ -233,7 +233,7 @@ if arquivos_amil:
                 if col_atend_to:
                     atendimentos_resolvidos_to.update(df_to_temp[col_atend_to].dropna().astype(str).str.strip().unique())
 
-        # --- ⚙️ PROCESSAMENTO DA PLANILHA 2 (CRUZAMENTO DE TO DA PLANILHA 2 COM A PLANILHA 3) ---
+        # --- ⚙️ PROCESSAMENTO DA PLANILHA 2 (CRUZAMENTO COM A PLANILHA 3) ---
         atendimentos_pendentes_setores = set()
         df_s_consolidado = pd.DataFrame()
         setores_agrupados = None
@@ -263,11 +263,12 @@ if arquivos_amil:
                 else:
                     df_s_consolidado['Valor_Calculado_Setor'] = 0.0
                 
-                # Regra de cruzamento solicitada: Se estiver na Planilha 3, retira a pendência de TO da Planilha 2
+                # Regra de prevalência: Remove a linha de pendência de TO se constar na Planilha 3
                 def filtrar_prevalencia_to(linha):
-                    if 'to' in str(linha['Grupo Especialidade']).lower() or 'terapia ocupacional' in str(linha['Grupo Especialidade']).lower():
+                    especialidade = str(linha['Grupo Especialidade']).lower()
+                    if 'to' in especialidade or 'terapia ocupacional' in especialidade:
                         if linha['Nº Atendimento'] in atendimentos_resolvidos_to:
-                            return False  # Libera a pendência de TO automaticamente
+                            return False
                     return True
                 
                 df_s_consolidado = df_s_consolidado[df_s_consolidado.apply(filtrar_prevalencia_to, axis=1)]
@@ -284,7 +285,6 @@ if arquivos_amil:
         else:
             df['Especialidades Pendentes'] = 'Aguardando planilha de setores técnica...'
 
-        # Valida se o paciente possui pendências reais na Planilha 2
         df['Tem_Pendencia_Setor'] = df['Nr. Atendimento'].isin(atendimentos_pendentes_setores) & (~df['É_Robo'])
 
         if col_contrato:
@@ -304,14 +304,12 @@ if arquivos_amil:
         df_liberados = df_faturamento_geral_sem_robo[(df_faturamento_geral_sem_robo['Inserido_Amil'] == False) & (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == False)].copy()
         df_liberados = df_liberados.sort_values(by='Valor a Cobrar', ascending=False)
 
-        # 🔥 APLICAÇÃO DA PRIORIZAÇÃO DA PLANILHA 2:
-        # A aba Prontuário Pendente filtra obrigatoriamente quem tem o status no IW e possui pendência pendente na Planilha 2 cruzada
+        # PRIORIZAÇÃO DA PLANILHA 2 (Sem duplicidade e com a grafia da variável corrigida)
         df_prontuario = df_faturamento_geral_sem_robo[
-            (df_faturamento_getal_sem_robo['Status Aut Orç'] == 'Prontuário Pendente') & 
+            (df_faturamento_geral_sem_robo['Status Aut Orç'] == 'Prontuário Pendente') & 
             (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == True)
         ].sort_values(by='Valor a Cobrar', ascending=False)
         
-        # A aba da Operação pega rigorosamente apenas os que estão com o status de OPS Pendente
         df_ops = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Status Aut Orç'] == 'OPS Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
 
         # Métricas globais
@@ -340,6 +338,7 @@ if arquivos_amil:
             card2.metric("✅ Inseridos (Com Guia TISS)", f"{inseridos_count}")
             card3.metric("🤖 Fila do Robô (Filtro Exato)", f"{len(df_fila_robo)}")
             card4.metric("VALOR TOTAL DE PACIENTES", f"R$ {valor_total_todos_pacientes:,.2f}")
+            # 🔥 CONSERTO VISUAL: Corrigido card5 para carregar corretamente a métrica sem duplicidades
             card5.metric("VALOR TOTAL DA PENDÊNCIAS DOS SETORES", f"R$ {valor_total_pendencias_setores:,.2f}")
             
             if len(df_base_erros) > 0:
