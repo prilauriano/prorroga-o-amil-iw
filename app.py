@@ -7,7 +7,7 @@ import io
 # 1. Configuração de página
 st.set_page_config(page_title="Dashboard Prorrogações | Solar Cuidados", page_icon="☀️", layout="wide")
 
-# 2. Injeção da Paleta de Cores Exata do Site (Bordô, Dourado e Off-White)
+# 2. Injeção da Paleta de Cores Exata (Bordô, Dourado e Off-White)
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght=300;400;500;600;700;800&display=swap');
@@ -112,16 +112,16 @@ st.markdown("""
         <h1 class="brand-title">Solar Cuidados — <span>Prorrogações</span></h1>
     </div>
 """, unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Módulo operacional integrado de auditoria Amil IW, monitoramento de prazos, volumetria ID/AD e controle de robô.</p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Módulo operacional integrado de auditoria Amil IW, monitoramento de prazos, volumetria ID/AD e controle de robô com prevalência de TO.</p>', unsafe_allow_html=True)
 
 # --- ÁREA DE UPLOAD ---
 col_up1, col_up2, col_up3 = st.columns(3)
 with col_up1:
     arquivos_amil = st.file_uploader("1 - PRORROGAÇÃO (.csv/.xlsx)", type=["csv", "xlsx"], accept_multiple_files=True)
 with col_up2:
-    arquivos_setores = st.file_uploader("2 - RELATÓRIOS DAS ESPECIALIDADES (.csv/.xlsx)", type=["csv", "xlsx"], accept_multiple_files=True)
+    arquivos_setores = st.file_uploader("2 - RELATÓRIOS DAS ESPECIALIDADES (Todas as Pendências)", type=["csv", "xlsx"], accept_multiple_files=True)
 with col_up3:
-    arquivos_to = st.file_uploader("3 - PACIENTES TO COM EVOLUÇÃO (.csv/.xlsx)", type=["csv", "xlsx"], accept_multiple_files=True)
+    arquivos_to = st.file_uploader("3 - PACIENTES TO COM EVOLUÇÃO (Liberações de TO)", type=["csv", "xlsx"], accept_multiple_files=True)
 
 if arquivos_amil:
     try:
@@ -159,17 +159,16 @@ if arquivos_amil:
         
         df['Nr. Atendimento'] = df['Nr. Atendimento'].fillna('').astype(str).str.strip()
         
-        # TRATAMENTO DE MOEDA BLINDADO CONTRA ERRO DE MULTIPLICAÇÃO DE PONTOS
+        # TRATAMENTO DE MOEDA BLINDADO
         def converter_moeda_br(valor):
             if pd.isna(valor): return 0.0
             valor_str = str(valor).strip().upper().replace('R$', '').strip()
             if not valor_str or valor_str == 'NAN' or valor_str == '': return 0.0
             
-            # Se tiver ponto como milhar e vírgula como decimal (padrão brasileiro: 1.500,22)
             if ',' in valor_str and '.' in valor_str:
                 if valor_str.find('.') < valor_str.find(','):
                     valor_str = valor_str.replace('.', '').replace(',', '.')
-            elif ',' in valor_str:  # Apenas vírgula decimal (ex: 1500,22)
+            elif ',' in valor_str: 
                 valor_str = valor_str.replace(',', '.')
                 
             try: return float(valor_str)
@@ -177,7 +176,6 @@ if arquivos_amil:
 
         df['Valor a Cobrar'] = df['Valor a Cobrar'].apply(converter_moeda_br)
         
-        # Classificações booleanas cruciais baseadas nas regras enviadas
         df['Is_ID'] = df['Classific. Atendimento'].str.upper().str.startswith('ID', na=False)
         df['Is_AD'] = df['Classific. Atendimento'].str.upper().str.startswith('AD', na=False)
         
@@ -187,7 +185,6 @@ if arquivos_amil:
 
         df['Inserido_Amil'] = df['Nº Guia Solicitação (TISS)'].str.isnumeric()
 
-        # CONTABILIZAÇÃO EXATA DE ROBÔ VS MANUAL CONFORME SUAS DIRETRIZES
         def verificar_origem_input(linha):
             just_txt = str(linha[col_justificativa]).strip() if col_justificativa else ""
             if "Operadora: Robo - Em analise" in just_txt:
@@ -198,7 +195,6 @@ if arquivos_amil:
 
         df['Origem_Input_Calculado'] = df.apply(verificar_origem_input, axis=1)
 
-        # FILA DO ROBÔ EXATA
         def verificar_flag_robo_exata(linha):
             just_txt = str(linha[col_justificativa]).strip() if col_justificativa else ""
             status_aut = str(linha['Status Aut Orç']).strip()
@@ -210,7 +206,6 @@ if arquivos_amil:
 
         df['É_Robo'] = df.apply(verificar_flag_robo_exata, axis=1)
 
-        # Filtro de erro
         def avaliar_erros_arquivo_nao_encontrado(linha):
             if col_status_rel:
                 valor_rel = str(linha[col_status_rel]).strip().lower()
@@ -221,7 +216,7 @@ if arquivos_amil:
         df['Inconsistencia_Erro'] = df.apply(avaliar_erros_arquivo_nao_encontrado, axis=1)
         df['Possui_Erro_Critico'] = df['Inconsistencia_Erro'] == "Arquivo Não Encontrado"
 
-        # --- 📑 LEITURA DA PLANILHA DE TO (PREVALÊNCIA) ---
+        # --- 📑 LEITURA DA PLANILHA 3 (TO COM EVOLUÇÃO / LIBERAÇÕES) ---
         atendimentos_resolvidos_to = set()
         if arquivos_to:
             for arq_to in arquivos_to:
@@ -238,7 +233,7 @@ if arquivos_amil:
                 if col_atend_to:
                     atendimentos_resolvidos_to.update(df_to_temp[col_atend_to].dropna().astype(str).str.strip().unique())
 
-        # --- ⚙️ PROCESSAMENTO DOS SETORES (RETIRANDO TO RESOLVIDO) ---
+        # --- ⚙️ PROCESSAMENTO DA PLANILHA 2 (CRUZAMENTO DE TO DA PLANILHA 2 COM A PLANILHA 3) ---
         atendimentos_pendentes_setores = set()
         df_s_consolidado = pd.DataFrame()
         setores_agrupados = None
@@ -262,17 +257,17 @@ if arquivos_amil:
                 df_s_consolidado['Nº Atendimento'] = df_s_consolidado['Nº Atendimento'].astype(str).str.strip()
                 df_s_consolidado['Grupo Especialidade'] = df_s_consolidado['Grupo Especialidade'].fillna('Outros').astype(str).str.strip()
                 
-                # Tratando o valor interno da planilha de setores de forma isolada
                 col_valor_item = next((col for col in df_s_consolidado.columns if 'valor' in col.lower() or 'item' in col.lower() or 'cobrar' in col.lower()), None)
                 if col_valor_item:
                     df_s_consolidado['Valor_Calculado_Setor'] = df_s_consolidado[col_valor_item].apply(converter_moeda_br)
                 else:
                     df_s_consolidado['Valor_Calculado_Setor'] = 0.0
                 
+                # Regra de cruzamento solicitada: Se estiver na Planilha 3, retira a pendência de TO da Planilha 2
                 def filtrar_prevalencia_to(linha):
                     if 'to' in str(linha['Grupo Especialidade']).lower() or 'terapia ocupacional' in str(linha['Grupo Especialidade']).lower():
                         if linha['Nº Atendimento'] in atendimentos_resolvidos_to:
-                            return False
+                            return False  # Libera a pendência de TO automaticamente
                     return True
                 
                 df_s_consolidado = df_s_consolidado[df_s_consolidado.apply(filtrar_prevalencia_to, axis=1)]
@@ -289,15 +284,14 @@ if arquivos_amil:
         else:
             df['Especialidades Pendentes'] = 'Aguardando planilha de setores técnica...'
 
+        # Valida se o paciente possui pendências reais na Planilha 2
         df['Tem_Pendencia_Setor'] = df['Nr. Atendimento'].isin(atendimentos_pendentes_setores) & (~df['É_Robo'])
 
-        # Identificação de Contrato RioHome utilizando a coluna contrato
         if col_contrato:
             df['É_RioHome'] = df[col_contrato].str.lower().str.contains('riohome|rio home|rio_home', regex=True).fillna(False)
         else:
             df['É_RioHome'] = False
 
-        # Separação das bases secundárias
         df_base_erros = df[df['Possui_Erro_Critico'] == True].copy()
         df_producao_limpa = df[df['Possui_Erro_Critico'] == False].copy()
 
@@ -310,16 +304,20 @@ if arquivos_amil:
         df_liberados = df_faturamento_geral_sem_robo[(df_faturamento_geral_sem_robo['Inserido_Amil'] == False) & (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == False)].copy()
         df_liberados = df_liberados.sort_values(by='Valor a Cobrar', ascending=False)
 
-        df_prontuario = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Status Aut Orç'] == 'Prontuário Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
+        # 🔥 APLICAÇÃO DA PRIORIZAÇÃO DA PLANILHA 2:
+        # A aba Prontuário Pendente filtra obrigatoriamente quem tem o status no IW e possui pendência pendente na Planilha 2 cruzada
+        df_prontuario = df_faturamento_geral_sem_robo[
+            (df_faturamento_getal_sem_robo['Status Aut Orç'] == 'Prontuário Pendente') & 
+            (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == True)
+        ].sort_values(by='Valor a Cobrar', ascending=False)
+        
+        # A aba da Operação pega rigorosamente apenas os que estão com o status de OPS Pendente
         df_ops = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Status Aut Orç'] == 'OPS Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
 
-        # MÉTRICAS FINANCEIRAS CORRIGIDAS (Amil IW pura)
+        # Métricas globais
         total_pacientes_iw = len(df)
         inseridos_count = df_producao_limpa['Inserido_Amil'].sum()
-        
         valor_total_todos_pacientes = df['Valor a Cobrar'].sum()
-        
-        # Puxa o valor correto somando apenas os pacientes mapeados da Amil com pendência ativa
         valor_total_pendencias_setores = df[df['Tem_Pendencia_Setor'] == True]['Valor a Cobrar'].sum()
 
         # --- ABAS DO DASHBOARD ---
@@ -386,7 +384,7 @@ if arquivos_amil:
             st.dataframe(df_id_ad.style.format({'Valor_Total': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
         with aba4:
-            st.markdown("### 📋 Lista de Pendências Ordenadas pelos Maiores Valores")
+            st.markdown("### 📋 Lista de Pendências Ordenadas e Cruzadas com Prevalência")
             
             if not df_s_consolidado.empty and 'Grupo Especialidade' in df_s_consolidado.columns:
                 try:
@@ -414,7 +412,7 @@ if arquivos_amil:
                 except:
                     st.info("💡 Gráfico financeiro temporariamente indisponível para este layout.")
                 
-            tab_p, tab_o = st.tabs(["📄 Prontuário Pendente", "🏢 OPS Pendente (Operação)"])
+            tab_p, tab_o = st.tabs(["📄 Prontuário Pendente (Prioridade Planilha 2)", "🏢 OPS Pendente (Operação)"])
             
             with tab_p:
                 st.markdown(f"**Total de Processos: {len(df_prontuario)} | Montante: R$ {df_prontuario['Valor a Cobrar'].sum():,.2f}**")
@@ -424,7 +422,7 @@ if arquivos_amil:
                 buffer_p = io.BytesIO()
                 with pd.ExcelWriter(buffer_p, engine='xlsxwriter') as writer:
                     df_p_view.to_excel(writer, sheet_name='Prontuário Pendente', index=False)
-                st.download_button(label="📥 Baixar Planilha Estruturada: Prontuário Pendente", data=buffer_p.getvalue(), file_name="prontuario_pendente_estruturado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                st.download_button(label="📥 Baixar Planilha Estruturada: Prontuário Pendente", data=buffer_p.getvalue(), file_name="prontuario_pendente_priorizado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 
                 st.markdown("---")
                 st.dataframe(df_p_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
