@@ -234,7 +234,6 @@ if arquivos_amil:
         atendimentos_pendentes_setores = set()
         df_s_consolidado = pd.DataFrame()
         setores_agrupados = None
-        valor_total_pendencias_setores = 0.0
         
         if arquivos_setores:
             lista_dfs_setores = []
@@ -269,9 +268,6 @@ if arquivos_amil:
                 
                 df_s_consolidado = df_s_consolidado[df_s_consolidado.apply(filtrar_prevalencia_to, axis=1)]
                 atendimentos_pendentes_setores = set(df_s_consolidado['Nº Atendimento'].unique())
-                
-                # Total real garantido para o botão/card de pendências
-                valor_total_pendencias_setores = df_s_consolidado['Valor_Calculado_Setor'].sum()
                 
                 setores_agrupados = df_s_consolidado.groupby('Nº Atendimento')['Grupo Especialidade'].apply(
                     lambda x: ', '.join(sorted(set(x)))
@@ -312,6 +308,9 @@ if arquivos_amil:
         total_pacientes_iw = len(df)
         inseridos_count = df_producao_limpa['Inserido_Amil'].sum()
         valor_total_todos_pacientes = df['Valor a Cobrar'].sum()
+        
+        # 🔥 CORREÇÃO EXATA DO CARD 5: Soma o Valor a Cobrar apenas dos ADs e IDs que de fato possuem pendência ativa
+        valor_total_pendencias_setores = df[df['Tem_Pendencia_Setor'] == True]['Valor a Cobrar'].sum()
 
         # --- ABAS DO DASHBOARD ---
         aba1, aba2, aba3, aba4, aba5, aba_r, aba6, aba7 = st.tabs([
@@ -379,7 +378,7 @@ if arquivos_amil:
             )
 
         with aba3:
-            st.markdown("### ### Análise do Modelo de Atendimento Solar (ID vs AD)")
+            st.markdown("### Análise do Modelo de Atendimento Solar (ID vs AD)")
             df_id_ad = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Inserido_Amil'] == False].groupby('Tipo_Atendimento').agg(Quantidade=('Nome do Paciente', 'count'), Valor_Total=('Valor a Cobrar', 'sum')).reset_index()
             st.dataframe(df_id_ad.style.format({'Valor_Total': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
@@ -412,7 +411,6 @@ if arquivos_amil:
                 df_p_view = df_prontuario[['Nr. Atendimento', 'ID Orçam.', 'Nome do Paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
                 df_p_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
                 
-                # 🔥 MANTIDO/CRIADO NOVAMENTE: Botão de download na aba de Prontuário Pendente
                 buffer_p = io.BytesIO()
                 with pd.ExcelWriter(buffer_p, engine='xlsxwriter') as writer:
                     df_p_view.to_excel(writer, sheet_name='Prontuário Pendente', index=False)
@@ -426,7 +424,6 @@ if arquivos_amil:
                 df_o_view = df_ops[['Nr. Atendimento', 'ID Orçam.', 'Nome do Paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
                 df_o_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
                 
-                # 🔥 MANTIDO/CRIADO NOVAMENTE: Botão de download na aba de OPS Pendente
                 buffer_o = io.BytesIO()
                 with pd.ExcelWriter(buffer_o, engine='xlsxwriter') as writer:
                     df_o_view.to_excel(writer, sheet_name='OPS Pendente', index=False)
@@ -437,14 +434,13 @@ if arquivos_amil:
 
         with aba5:
             st.markdown("### 🚀 Pacientes Liberados (Sem Pendências nos Setores)")
-            if not arquivos_setores:
+            if not archivos_setores:
                 st.warning("⚠️ Para ver quem está liberado, carregue a planilha de Setores no campo de upload.")
             else:
                 st.markdown(f"**🔥 Total Prontos para Input: {len(df_liberados)} | Valor de Giro Rápido: R$ {df_liberados['Valor a Cobrar'].sum():,.2f}**")
                 df_liberados_clean_excel = df_liberados[['Nr. Atendimento', 'ID Orçam.', 'Nome do Paciente', 'Tipo_Atendimento', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
                 df_liberados_clean_excel.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo Atendimento', 'Responsável', 'Valor a Cobrar (R$)']
                 
-                # 🔥 MANTIDO: Botão de download também na aba de Liberados para Input
                 buffer_liberados = io.BytesIO()
                 with pd.ExcelWriter(buffer_liberados, engine='xlsxwriter') as writer:
                     df_liberados_clean_excel.to_excel(writer, sheet_name='Liberados Input', index=False)
