@@ -179,7 +179,7 @@ if arquivos_amil:
 
         df['Inserido_Amil'] = df['Nº Guia Solicitação (TISS)'].str.isnumeric()
 
-        # 🔥 CONTABILIZAÇÃO EXATA DE ROBÔ VS MANUAL CONFORME SUAS DIRETRIZES
+        # CONTABILIZAÇÃO EXATA DE ROBÔ VS MANUAL CONFORME SUAS DIRETRIZES
         def verificar_origem_input(linha):
             just_txt = str(linha[col_justificativa]).strip() if col_justificativa else ""
             if "Operadora: Robo - Em analise" in just_txt:
@@ -270,7 +270,7 @@ if arquivos_amil:
                 df_s_consolidado = df_s_consolidado[df_s_consolidado.apply(filtrar_prevalencia_to, axis=1)]
                 atendimentos_pendentes_setores = set(df_s_consolidado['Nº Atendimento'].unique())
                 
-                # 🔥 Total real garantido para o botão/card de pendências
+                # Total real garantido para o botão/card de pendências
                 valor_total_pendencias_setores = df_s_consolidado['Valor_Calculado_Setor'].sum()
                 
                 setores_agrupados = df_s_consolidado.groupby('Nº Atendimento')['Grupo Especialidade'].apply(
@@ -343,7 +343,6 @@ if arquivos_amil:
             
             col_responsavel = 'Pessoa Resp Aut'
             
-            # 🔥 CORREÇÃO DAS SOMAS E DOS VALORES DE ID/AD POR ANALISTA RESPONSÁVEL
             df_producao_limpa['Valor_ID'] = df_producao_limpa.apply(lambda r: r['Valor a Cobrar'] if r['Is_ID'] else 0.0, axis=1)
             df_producao_limpa['Valor_AD'] = df_producao_limpa.apply(lambda r: r['Valor a Cobrar'] if r['Is_AD'] else 0.0, axis=1)
             df_producao_limpa['Robo_Contado'] = df_producao_limpa['Origem_Input_Calculado'] == "Robô"
@@ -380,14 +379,13 @@ if arquivos_amil:
             )
 
         with aba3:
-            st.markdown("### 🏥 Análise do Modelo de Atendimento Solar (ID vs AD)")
+            st.markdown("### ### Análise do Modelo de Atendimento Solar (ID vs AD)")
             df_id_ad = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Inserido_Amil'] == False].groupby('Tipo_Atendimento').agg(Quantidade=('Nome do Paciente', 'count'), Valor_Total=('Valor a Cobrar', 'sum')).reset_index()
             st.dataframe(df_id_ad.style.format({'Valor_Total': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
         with aba4:
             st.markdown("### 📋 Lista de Pendências Ordenadas pelos Maiores Valores")
             
-            # 🔥 CORREÇÃO VISUAL COMPLETA DOS GRÁFICOS DO PLOTLY EXIBINDO OS VALORES REAIS
             if not df_s_consolidado.empty and 'Grupo Especialidade' in df_s_consolidado.columns:
                 st.markdown("#### 📊 Distribuição de Pendências Técnicas (Quantidade)")
                 contagem_setores = df_s_consolidado['Grupo Especialidade'].value_counts().reset_index()
@@ -413,12 +411,28 @@ if arquivos_amil:
                 st.markdown(f"**Total de Processos: {len(df_prontuario)} | Montante: R$ {df_prontuario['Valor a Cobrar'].sum():,.2f}**")
                 df_p_view = df_prontuario[['Nr. Atendimento', 'ID Orçam.', 'Nome do Paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
                 df_p_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
+                
+                # 🔥 MANTIDO/CRIADO NOVAMENTE: Botão de download na aba de Prontuário Pendente
+                buffer_p = io.BytesIO()
+                with pd.ExcelWriter(buffer_p, engine='xlsxwriter') as writer:
+                    df_p_view.to_excel(writer, sheet_name='Prontuário Pendente', index=False)
+                st.download_button(label="📥 Baixar Planilha Estruturada: Prontuário Pendente", data=buffer_p.getvalue(), file_name="prontuario_pendente_estruturado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                
+                st.markdown("---")
                 st.dataframe(df_p_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
                 
             with tab_o:
                 st.markdown(f"**Total de Processos: {len(df_ops)} | Montante: R$ {df_ops['Valor a Cobrar'].sum():,.2f}**")
                 df_o_view = df_ops[['Nr. Atendimento', 'ID Orçam.', 'Nome do Paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
                 df_o_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor a Cobrar (R$)']
+                
+                # 🔥 MANTIDO/CRIADO NOVAMENTE: Botão de download na aba de OPS Pendente
+                buffer_o = io.BytesIO()
+                with pd.ExcelWriter(buffer_o, engine='xlsxwriter') as writer:
+                    df_o_view.to_excel(writer, sheet_name='OPS Pendente', index=False)
+                st.download_button(label="📥 Baixar Planilha Estruturada: Pendências da Operação", data=buffer_o.getvalue(), file_name="ops_pendente_estruturado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                
+                st.markdown("---")
                 st.dataframe(df_o_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
         with aba5:
@@ -430,7 +444,7 @@ if arquivos_amil:
                 df_liberados_clean_excel = df_liberados[['Nr. Atendimento', 'ID Orçam.', 'Nome do Paciente', 'Tipo_Atendimento', 'Pessoa Resp Aut', 'Valor a Cobrar']].copy()
                 df_liberados_clean_excel.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo Atendimento', 'Responsável', 'Valor a Cobrar (R$)']
                 
-                # 🔥 BOTÃO DE DOWNLOAD EXCLUSIVO MOVIDO PARA CÁ CONFORME SOLICITADO
+                # 🔥 MANTIDO: Botão de download também na aba de Liberados para Input
                 buffer_liberados = io.BytesIO()
                 with pd.ExcelWriter(buffer_liberados, engine='xlsxwriter') as writer:
                     df_liberados_clean_excel.to_excel(writer, sheet_name='Liberados Input', index=False)
