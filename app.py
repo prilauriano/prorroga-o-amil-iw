@@ -200,19 +200,15 @@ if arquivos_amil:
 
         df['Tem_Pendencia_Setor'] = df['Nr. Atendimento'].isin(atendimentos_pendentes_setores)
 
-        # --- REFEITO: IDENTIFICAÇÃO E SEPARAÇÃO DO CONTRATO RIOHOME ---
-        coluna_contrato = next((col for col in df.columns if any(p in col.lower() for p in ['contrato', 'convenio', 'operadora', 'plano', 'empresa'])), None)
-        
-        if coluna_contrato:
-            df['É_RioHome'] = df[coluna_contrato].astype(str).str.lower().str.contains('riohome|rio home', regex=True)
-        else:
-            # Caso não encontre a coluna por nome, varre todas as colunas de texto da linha para identificar a palavra RioHome de segurança
-            df['É_RioHome'] = df.astype(str).apply(lambda row: row.str.lower().str.contains('riohome|rio home').any(), axis=1)
+        # --- CORRIGIDO: VARREDURA AMPLA E BLINDADA DE RIOHOME EM TODAS AS COLUNAS ---
+        # Converte a linha inteira para texto minúsculo e checa se contém 'riohome' ou 'rio home'
+        df['É_RioHome'] = df.astype(str).apply(
+            lambda row: row.str.lower().str.contains('riohome|rio home|rio_home', regex=True).any(), 
+            axis=1
+        )
 
-        # Divisão das bases: Quem é RioHome vai para a lista manual separada
+        # Divisão das bases com base na varredura ampla
         df_riohome = df[df['É_RioHome'] == True].copy()
-        
-        # A base geral de faturamento EXCLUI o contrato RioHome para não inflar as pendências normais
         df_faturamento_geral = df[df['É_RioHome'] == False].copy()
 
         # Filtros das Tabelas Visuais (Usando a base limpa sem RioHome)
@@ -236,7 +232,7 @@ if arquivos_amil:
             "🏥 Segmentação ID / AD", 
             "📋 Listas de Prorrogação", 
             "🚀 Liberados para Input",
-            "🏠 Contrato RioHome (Manual)", # ABA NOVA
+            "🏠 Contrato RioHome (Manual)", 
             "🚨 Alertas de Erro"
         ])
         
@@ -332,12 +328,11 @@ if arquivos_amil:
                     format_money = workbook.add_format({'num_format': 'R$ #,##0.00'})
                     worksheet.set_column('F:F', 18, format_money)
                     worksheet.set_column('A:E', 22)
-                
                 st.download_button(label="🟢 Baixar Planilha Enxuta (Apenas Dados Abaixo Limpos)", data=buffer_clean.getvalue(), file_name="pacientes_liberados_enxuto_solar.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 st.markdown("---")
                 st.dataframe(df_liberados_clean_excel.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
-        # --- 🏠 NOVA ABA 6: CONTRATO RIOHOME (MANUAL) ---
+        # --- 🏠 ABA 6: CONTRATO RIOHOME (MANUAL) ---
         with aba6:
             st.markdown("### 🏠 Listagem Isolada — Contrato RioHome")
             st.markdown("Pacientes identificados neste grupo possuem fluxo de entrega de relatórios **manual** e foram retirados das filas de pendências e inputs gerais.")
@@ -351,7 +346,7 @@ if arquivos_amil:
             st.markdown("---")
             
             if total_riohome == 0:
-                st.success("🎉 Nenhum paciente do contrato RioHome foi identificado nas planilhas carregadas.")
+                st.info("💡 Nenhum paciente contendo a palavra 'RioHome' foi identificado no cruzamento amplo das colunas.")
             else:
                 df_riohome_view = df_riohome[['Nr. Atendimento', 'Nome do Paciente', 'ID Orçam.', 'Tipo_Atendimento', 'Pessoa Resp Aut', 'Status Aut Orç', 'Valor a Cobrar']].copy()
                 df_riohome_view.columns = ['Nº Atendimento', 'Paciente', 'ID Orçamento', 'Tipo', 'Responsável', 'Status Atual IW', 'Valor a Cobrar (R$)']
