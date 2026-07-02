@@ -309,7 +309,7 @@ if arquivos_amil:
         inseridos_count = df_producao_limpa['Inserido_Amil'].sum()
         valor_total_todos_pacientes = df['Valor a Cobrar'].sum()
         
-        # 🔥 CORREÇÃO EXATA DO CARD 5: Soma o Valor a Cobrar apenas dos ADs e IDs que de fato possuem pendência ativa
+        # Correção Exata do Card 5 conforme homologado
         valor_total_pendencias_setores = df[df['Tem_Pendencia_Setor'] == True]['Valor a Cobrar'].sum()
 
         # --- ABAS DO DASHBOARD ---
@@ -385,24 +385,33 @@ if arquivos_amil:
         with aba4:
             st.markdown("### 📋 Lista de Pendências Ordenadas pelos Maiores Valores")
             
+            # 🔥 BLINDAGEM CONTRA O ERRO DE COLUNAS DO PLOTLY:
             if not df_s_consolidado.empty and 'Grupo Especialidade' in df_s_consolidado.columns:
-                st.markdown("#### 📊 Distribuição de Pendências Técnicas (Quantidade)")
-                contagem_setores = df_s_consolidado['Grupo Especialidade'].value_counts().reset_index()
-                contagem_setores.columns = ['Setor/Especialidade', 'Volume de Pendências']
-                fig_setores = px.bar(contagem_setores, x='Setor/Especialidade', y='Volume de Pendências', 
-                                     color='Volume de Pendências', color_continuous_scale='Reds', text_auto=True)
-                fig_setores.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=10, b=10, l=10, r=10))
-                st.plotly_chart(fig_setores, use_container_width=True)
-                
-                st.markdown("#### 💰 Impacto Financeiro Represado por Setor (Valores)")
-                financeiro_setores = df_s_consolidado.groupby('Grupo Especialidade')['Valor_Calculado_Setor'].sum().reset_index()
-                financeiro_setores.columns = ['Setor/Especialidade', 'Valor Represado']
-                financeiro_setores = financeiro_setores.sort_values(by='Valor Represado', ascending=False)
-                
-                fig_valores = px.bar(financeiro_setores, x='Setor/Especialidade', y='Valor Represado', 
-                                     color='Valor Represado', color_continuous_scale='Oryel', text_auto='R$ ,.2f')
-                fig_valores.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=10, b=10, l=10, r=10))
-                st.plotly_chart(fig_valores, use_container_width=True)
+                try:
+                    st.markdown("#### 📊 Distribuição de Pendências Técnicas (Quantidade)")
+                    contagem_setores = df_s_consolidado['Grupo Especialidade'].value_counts().reset_index()
+                    # Garante nomes compatíveis com versões antigas e novas do pandas (.reset_index())
+                    contagem_setores.columns = ['Setor_Especialidade', 'Volume de Pendências']
+                    
+                    fig_setores = px.bar(contagem_setores, x='Setor_Especialidade', y='Volume de Pendências', 
+                                         color='Volume de Pendências', color_continuous_scale='Reds', text_auto=True)
+                    fig_setores.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=10, b=10, l=10, r=10))
+                    st.plotly_chart(fig_setores, use_container_width=True)
+                except Exception as chart_err1:
+                    st.info("💡 Não foi possível renderizar o gráfico volumétrico com a estrutura atual deste arquivo.")
+
+                try:
+                    st.markdown("#### 💰 Impacto Financeiro Represado por Setor (Valores)")
+                    financeiro_setores = df_s_consolidado.groupby('Grupo Especialidade')['Valor_Calculado_Setor'].sum().reset_index()
+                    financeiro_setores.columns = ['Setor_Especialidade', 'Valor Represado']
+                    financeiro_setores = financeiro_setores.sort_values(by='Valor Represado', ascending=False)
+                    
+                    fig_valores = px.bar(financeiro_setores, x='Setor_Especialidade', y='Valor Represado', 
+                                         color='Valor Represado', color_continuous_scale='Oryel', text_auto='R$ ,.2f')
+                    fig_valores.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=10, b=10, l=10, r=10))
+                    st.plotly_chart(fig_valores, use_container_width=True)
+                except Exception as chart_err2:
+                    st.info("💡 Não foi possível renderizar o gráfico financeiro com a estrutura atual deste arquivo.")
                 
             tab_p, tab_o = st.tabs(["📄 Prontuário Pendente", "🏢 OPS Pendente (Operação)"])
             
@@ -434,7 +443,7 @@ if arquivos_amil:
 
         with aba5:
             st.markdown("### 🚀 Pacientes Liberados (Sem Pendências nos Setores)")
-            if not archivos_setores:
+            if not arquivos_setores:
                 st.warning("⚠️ Para ver quem está liberado, carregue a planilha de Setores no campo de upload.")
             else:
                 st.markdown(f"**🔥 Total Prontos para Input: {len(df_liberados)} | Valor de Giro Rápido: R$ {df_liberados['Valor a Cobrar'].sum():,.2f}**")
