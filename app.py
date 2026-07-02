@@ -117,9 +117,9 @@ st.markdown('<p class="subtitle">Módulo operacional integrado de auditoria Amil
 # --- ÁREA DE UPLOAD ---
 col_up1, col_up2, col_up3 = st.columns(3)
 with col_up1:
-    arquivos_amil = st.file_uploader("1 - PLANILHA PRORROGAÇÃO (.csv/.xlsx)", type=["csv", "xlsx"], accept_multiple_files=True)
+    arquivos_amil = st.file_uploader("1 - PRORROGAÇÃO (.csv/.xlsx)", type=["csv", "xlsx"], accept_multiple_files=True)
 with col_up2:
-    arquivos_setores = st.file_uploader("2 - RELATÓRIOS DAS ESPECILIDADES (.csv/.xlsx)", type=["csv", "xlsx"], accept_multiple_files=True)
+    arquivos_setores = st.file_uploader("2 - RELATÓRIOS DAS ESPECIALIDADES (.csv/.xlsx)", type=["csv", "xlsx"], accept_multiple_files=True)
 with col_up3:
     arquivos_to = st.file_uploader("3 - PACIENTES TO COM EVOLUÇÃO (.csv/.xlsx)", type=["csv", "xlsx"], accept_multiple_files=True)
 
@@ -140,14 +140,16 @@ if arquivos_amil:
         
         df = pd.concat(lista_dfs_amil, ignore_index=True)
         
-        # Identificação de colunas secundárias
+        # Identificação de colunas secundárias e do Contrato
         col_justificativa = next((col for col in df.columns if 'justificativa' in col.lower() or 'pendencia' in col.lower()), None)
         col_status_rel = next((col for col in df.columns if 'status rel' in col.lower() or 'rel orç' in col.lower() or 'status_rel' in col.lower()), None)
+        col_contrato = next((col for col in df.columns if str(col).strip().lower() == 'contrato'), None)
         
         # Mapeando e limpando campos principais
         campos_obrigatorios = ['Nº Guia Solicitação (TISS)', 'Senha Aprovação', 'Status Aut Orç', 'Nr. Matricula', 'Pessoa Resp Aut', 'Classific. Atendimento', 'Nome do Paciente', 'ID Orçam.']
         if col_justificativa: campos_obrigatorios.append(col_justificativa)
         if col_status_rel: campos_obrigatorios.append(col_status_rel)
+        if col_contrato: campos_obrigatorios.append(col_contrato)
             
         for c in campos_obrigatorios:
             if c in df.columns:
@@ -167,12 +169,12 @@ if arquivos_amil:
 
         df['Valor a Cobrar'] = df['Valor a Cobrar'].apply(converter_moeda_br)
         
-        # 🔥 CLASSIFIC. ATENDIMENTO: Separação estrita de AD e ID
+        # CLASSIFIC. ATENDIMENTO: Separação estrita de AD e ID
         df['Tipo_Atendimento'] = df['Classific. Atendimento'].apply(
             lambda x: 'ID (Internação Domiciliar)' if str(x).strip().upper().startswith('ID') else ('AD (Atenção Domiciliar)' if str(x).strip().upper().startswith('AD') else 'Outros')
         )
 
-        # 🔥 NOVO CRITÉRIO EXATO DOS INSERIDOS: Somente quem possui número na Guia TISS
+        # NOVO CRITÉRIO EXATO DOS INSERIDOS: Somente quem possui número na Guia TISS
         df['Inserido_Amil'] = df['Nº Guia Solicitação (TISS)'].str.isnumeric()
 
         # Input inteligente (Robô vs Manual)
@@ -191,12 +193,11 @@ if arquivos_amil:
 
         df['Origem_Input_Calculado'] = df.apply(analisar_tipo_input, axis=1)
 
-        # 🔥 FILA DO ROBÔ EXATA: Justificativa == "Robô aguardando input" e Status Aut Orç == "Lib. para o Robô input"
+        # FILA DO ROBÔ EXATA
         def verificar_flag_robo_exata(linha):
             just_txt = str(linha[col_justificativa]).strip() if col_justificativa else ""
             status_aut = str(linha['Status Aut Orç']).strip()
             
-            # Validação rigorosa dos termos informados
             cond_just = "Robô aguardando input" in just_txt or "Robo aguardando input" in just_txt
             cond_stat = "Lib. para o Robô input" in status_aut or "Lib. para o Robo input" in status_aut
             
@@ -272,7 +273,6 @@ if arquivos_amil:
                 df_s_consolidado = df_s_consolidado[df_s_consolidado.apply(filtrar_prevalencia_to, axis=1)]
                 atendimentos_pendentes_setores = set(df_s_consolidado['Nº Atendimento'].unique())
                 
-                # 🔥 Cálculo financeiro total da planilha de setores técnica
                 valor_total_pendencias_setores = df_s_consolidado['Valor_Calculado_Setor'].sum()
                 
                 setores_agrupados = df_s_consolidado.groupby('Nº Atendimento')['Grupo Especialidade'].apply(
@@ -287,6 +287,12 @@ if arquivos_amil:
             df['Especialidades Pendentes'] = 'Aguardando planilha de setores técnica...'
 
         df['Tem_Pendencia_Setor'] = df['Nr. Atendimento'].isin(atendimentos_pendentes_setores) & (~df['É_Robo'])
+
+        # 🔥 CONSERTO SEGURO: Identificação do Contrato RioHome utilizando a coluna de Contrato mapeada
+        if col_contrato:
+            df['É_RioHome'] = df[col_contrato].str.lower().str.contains('riohome|rio home|rio_home', regex=True).fillna(False)
+        else:
+            df['É_RioHome'] = False
 
         # Separação das bases secundárias
         df_base_erros = df[df['Possui_Erro_Critico'] == True].copy()
@@ -304,10 +310,10 @@ if arquivos_amil:
         df_prontuario = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Status Aut Orç'] == 'Prontuário Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
         df_ops = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Status Aut Orç'] == 'OPS Pendente'].sort_values(by='Valor a Cobrar', ascending=False)
 
-        # Métricas globais atualizadas
+        # Métricas globais
         total_pacientes_iw = len(df)
         inseridos_count = df_producao_limpa['Inserido_Amil'].sum()
-        valor_total_todos_pacientes = df['Valor a Cobrar'].sum() # 🔥 Valor Total de TODOS os pacientes
+        valor_total_todos_pacientes = df['Valor a Cobrar'].sum()
 
         # --- ABAS DO DASHBOARD ---
         aba1, aba2, aba3, aba4, aba5, aba_r, aba6, aba7 = st.tabs([
@@ -328,7 +334,7 @@ if arquivos_amil:
             card1.metric("Total Base Bruta IW", f"{total_pacientes_iw}")
             card2.metric("✅ Inseridos (Com Guia TISS)", f"{inseridos_count}")
             card3.metric("🤖 Fila do Robô (Filtro Exato)", f"{len(df_fila_robo)}")
-            card4.metric("💰 Valor Total de Pacientes", f"R$ {valor_total_pacientes:,.2f}")
+            card4.metric("💰 Valor Total de Pacientes", f"R$ {valor_total_todos_pacientes:,.2f}")
             card5.metric("⚠️ Valor Total das Pendências", f"R$ {valor_total_pendencias_setores:,.2f}")
             
             if len(df_base_erros) > 0:
@@ -339,7 +345,6 @@ if arquivos_amil:
             
             col_responsavel = 'Pessoa Resp Aut'
             
-            # 🔥 CONSERTO DEFINITIVO: Contabilização a partir de Classific. Atendimento e Valor a Cobrar
             df_producao_limpa['Qtd_ID'] = df_producao_limpa['Tipo_Atendimento'] == 'ID (Internação Domiciliar)'
             df_producao_limpa['Qtd_AD'] = df_producao_limpa['Tipo_Atendimento'] == 'AD (Atenção Domiciliar)'
             df_producao_limpa['Robo_Rodado'] = df_producao_limpa['Origem_Input_Calculado'] == "Robô"
@@ -365,7 +370,6 @@ if arquivos_amil:
         with aba4:
             st.markdown("### 📋 Lista de Pendências Ordenadas pelos Maiores Valores")
             
-            # 🔥 GRÁFICOS ORGANIZADOS UM ABAIXO DO OUTRO VERTICALMENTE
             if not df_s_consolidado.empty and 'Grupo Especialidade' in df_s_consolidado.columns:
                 st.markdown("#### 📊 Distribuição de Pendências Técnicas (Quantidade)")
                 contagem_setores = df_s_consolidado['Grupo Especialidade'].value_counts().reset_index()
