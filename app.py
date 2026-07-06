@@ -111,7 +111,7 @@ st.markdown("""
         <h1 class="brand-title">Solar Cuidados — <span>Prorrogações</span></h1>
     </div>
 """, unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Módulo operacional integrado de auditoria Amil IW, monitoramento de prazos, volumetria ID/AD e controle de pendências técnicas por paciente.</p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Módulo operational integrado de auditoria Amil IW, monitoramento de prazos, volumetria ID/AD e controle de pendências técnicas por paciente.</p>', unsafe_allow_html=True)
 
 # --- ÁREA DE UPLOAD ---
 col_up1, col_up2, col_up3 = st.columns(3)
@@ -316,12 +316,13 @@ if arquivos_amil:
         
         with aba1:
             st.markdown("### 📌 Indicadores Operacionais e Financeiros Estruturados")
-            card1, card2, card3, card4, card5 = st.columns(5)
+            card1, card2, card3, card4, card5, card6 = st.columns(6)
             card1.metric("Total Base Bruta IW", f"{total_pacientes_iw}")
             card2.metric("✅ Inseridos (Com Guia TISS)", f"{inseridos_count}")
-            card3.metric("🤖 Fila do Robô (Filtro Exato)", f"{len(df_fila_robo)}")
-            card4.metric("VALOR TOTAL DE PACIENTES", f"R$ {valor_total_todos_pacientes:,.2f}")
-            card5.metric("VALOR TOTAL EM PENDÊNCIA TÉCNICA", f"R$ {valor_total_pendencias_setores:,.2f}")
+            card3.metric("🚀 Pendentes para Input", f"{len(df_liberados)}")
+            card4.metric("🤖 Fila do Robô (Filtro Exato)", f"{len(df_fila_robo)}")
+            card5.metric("VALOR TOTAL DE PACIENTES", f"R$ {valor_total_todos_pacientes:,.2f}")
+            card6.metric("VALOR TOTAL EM PENDÊNCIA TÉCNICA", f"R$ {valor_total_pendencias_setores:,.2f}")
 
         with aba2:
             st.markdown("### 👤 Carga Operacional e Rastreabilidade de Inputs (Robô vs Manual)")
