@@ -111,7 +111,7 @@ st.markdown("""
         <h1 class="brand-title">Solar Cuidados — <span>Prorrogações</span></h1>
     </div>
 """, unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Módulo operational integrado de auditoria Amil IW, monitoramento de prazos, volumetria ID/AD e controle de pendências técnicas por paciente.</p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Módulo operacional integrado de auditoria Amil IW, monitoramento de prazos, volumetria ID/AD e controle de pendências técnicas por paciente.</p>', unsafe_allow_html=True)
 
 # --- ÁREA DE UPLOAD ---
 col_up1, col_up2, col_up3 = st.columns(3)
@@ -306,6 +306,9 @@ if arquivos_amil:
         inseridos_count = df_producao_limpa['Inserido_Amil'].sum()
         valor_total_todos_pacientes = df['Valor a Cobrar'].sum()
         valor_total_pendencias_setores = df[df['Tem_Pendencia_Setor'] == True]['Valor a Cobrar'].sum()
+        
+        # 🔥 ALTERAÇÃO SOLICITADA: Quantitativo focado estritamente nas guias TISS não inseridas (em branco) na Amil
+        total_pendentes_input_real = (df_faturamento_geral_sem_robo['Inserido_Amil'] == False).sum()
 
         # --- ABAS DO DASHBOARD ---
         aba1, aba2, aba3, aba4, aba5, aba_r, aba6, aba7 = st.tabs([
@@ -319,7 +322,7 @@ if arquivos_amil:
             card1, card2, card3, card4, card5, card6 = st.columns(6)
             card1.metric("Total Base Bruta IW", f"{total_pacientes_iw}")
             card2.metric("✅ Inseridos (Com Guia TISS)", f"{inseridos_count}")
-            card3.metric("🚀 Pendentes para Input", f"{len(df_liberados)}")
+            card3.metric("🚀 Pendentes para Input", f"{total_pendentes_input_real}")
             card4.metric("🤖 Fila do Robô (Filtro Exato)", f"{len(df_fila_robo)}")
             card5.metric("VALOR TOTAL DE PACIENTES", f"R$ {valor_total_todos_pacientes:,.2f}")
             card6.metric("VALOR TOTAL EM PENDÊNCIA TÉCNICA", f"R$ {valor_total_pendencias_setores:,.2f}")
