@@ -307,8 +307,8 @@ if arquivos_amil:
         valor_total_todos_pacientes = df['Valor a Cobrar'].sum()
         valor_total_pendencias_setores = df[df['Tem_Pendencia_Setor'] == True]['Valor a Cobrar'].sum()
         
-        # 🔥 ALTERAÇÃO SOLICITADA: Quantitativo focado estritamente nas guias TISS não inseridas (em branco) na Amil
-        total_pendentes_input_real = (df_faturamento_geral_sem_robo['Inserido_Amil'] == False).sum()
+        # 🔥 CORREÇÃO MATEMÁTICA: Conta quem não foi inserido na Amil olhando para a base bruta total
+        total_pendentes_input_real = (df['Inserido_Amil'] == False).sum()
 
         # --- ABAS DO DASHBOARD ---
         aba1, aba2, aba3, aba4, aba5, aba_r, aba6, aba7 = st.tabs([
