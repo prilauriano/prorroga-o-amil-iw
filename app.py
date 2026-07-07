@@ -317,8 +317,9 @@ if arquivos_amil:
         df_base_erros = df[df['Possui_Erro_Critico'] == True].copy()
         df_producao_limpa = df[df['Possui_Erro_Critico'] == False].copy()
 
-        df_riohome = df_producao_limpa[df_producao_limpa['é_riohome'] == True].copy()
-        df_faturamento_geral = df_producao_limpa[df_producao_limpa['é_riohome'] == False].copy()
+        # 🔥 CORREÇÃO AQUI: Mudado de 'é_riohome' para 'É_RioHome' (casando com o nome real criado)
+        df_riohome = df_producao_limpa[df_producao_limpa['É_RioHome'] == True].copy()
+        df_faturamento_geral = df_producao_limpa[df_producao_limpa['É_RioHome'] == False].copy()
 
         df_fila_robo = df_faturamento_geral[
             (df_faturamento_geral['É_Robo'] == True) & 
@@ -329,7 +330,7 @@ if arquivos_amil:
         
         df_faturamento_geral_sem_robo = df_faturamento_geral[df_faturamento_geral['É_Robo'] == False].copy()
 
-        # 🔥 CORREÇÃO DA REGRA DE LIBERADOS: Filtra cirurgicamente apenas os status e justificativas administrativas travadas (Impede sumir com a base)
+        # REGRA DE LIBERADOS PROTEGIDA: Filtra cirurgicamente apenas os status e justificativas administrativas travadas (Impede sumir com a base)
         df_liberados = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['Inserido_Amil'] == False) & 
             (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == False) &
@@ -338,7 +339,7 @@ if arquivos_amil:
         ].copy()
         df_liberados = df_liberados.sort_values(by='valor_calculado', ascending=False)
 
-        # 🔥 CORREÇÃO DE PRONTUÁRIO PENDENTE: Baseia-se unicamente no status oficial do IW casado com a Planilha 2 (Segurança total contra falsos vazios)
+        # REGRA DE PRONTUÁRIO PENDENTE FIXADA: Baseia-se unicamente no status oficial do IW casado com a Planilha 2
         df_prontuario = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['status aut orç'] == 'Prontuário Pendente') & 
             (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == True)
