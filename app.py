@@ -118,7 +118,7 @@ col_up1, col_up2, col_up3 = st.columns(3)
 with col_up1:
     arquivos_amil = st.file_uploader("1 - PRORROGAÇÃO (.csv/.xlsx)", type=["csv", "xlsx"], accept_multiple_files=True)
 with col_up2:
-    arquivos_setores = st.file_uploader("2 - RELATÓRIOS DAS ESPECIALIDADES (Todas as Pendências)", type=["csv", "xlsx"], accept_multiple_files=True)
+    arquivos_setores = st.file_uploader("2 - RELATÓRIOS DAS ESPECILIDADES (Todas as Pendências)", type=["csv", "xlsx"], accept_multiple_files=True)
 with col_up3:
     arquivos_to = st.file_uploader("3 - PACIENTES TO COM EVOLUÇÃO (Liberações de TO)", type=["csv", "xlsx"], accept_multiple_files=True)
 
@@ -158,20 +158,38 @@ if arquivos_amil:
         
         df['Nr. Atendimento'] = df['Nr. Atendimento'].fillna('').astype(str).str.strip()
         
-        # TRATAMENTO DE MOEDA
+        # 🔥 TRATAMENTO DE MOEDA CORRIGIDO (Multiplica valores fracionados menores que R$ 10 para converter diárias em milhares)
         def converter_moeda_br(valor):
             if pd.isna(valor): return 0.0
-            valor_str = str(valor).strip().upper().replace('R$', '').strip()
-            if not valor_str or valor_str == 'NAN' or valor_str == '': return 0.0
             
+            # Se o Pandas já ler como numérico puro
+            if isinstance(valor, (int, float)):
+                v_float = float(valor)
+                if 0 < v_float < 10.0:  # Se for valor de diária fracionada do IW (ex: 2.63)
+                    return v_float * 1000.0
+                return v_float
+
+            valor_str = str(valor).strip().upper().replace('R$', '').strip()
+            if not valor_str or valor_str in ['NAN', '']: return 0.0
+            
+            # Formatações de strings geográficas brasileiras
             if ',' in valor_str and '.' in valor_str:
                 if valor_str.find('.') < valor_str.find(','):
                     valor_str = valor_str.replace('.', '').replace(',', '.')
             elif ',' in valor_str: 
                 valor_str = valor_str.replace(',', '.')
+            elif '.' in valor_str:
+                partes = valor_str.split('.')
+                if len(partes[-1]) == 3:
+                    valor_str = valor_str.replace('.', '')
                 
-            try: return float(valor_str)
-            except: return 0.0
+            try: 
+                resultado = float(valor_str)
+                if 0 < resultado < 10.0:  # Proteção extra para strings convertidas em números baixos
+                    return resultado * 1000.0
+                return resultado
+            except: 
+                return 0.0
 
         df['Valor a Cobrar'] = df['Valor a Cobrar'].apply(converter_moeda_br)
         
@@ -307,7 +325,6 @@ if arquivos_amil:
         valor_total_todos_pacientes = df['Valor a Cobrar'].sum()
         valor_total_pendencias_setores = df[df['Tem_Pendencia_Setor'] == True]['Valor a Cobrar'].sum()
         
-        # 🔥 CORREÇÃO MATEMÁTICA: Conta quem não foi inserido na Amil olhando para a base bruta total
         total_pendentes_input_real = (df['Inserido_Amil'] == False).sum()
 
         # --- ABAS DO DASHBOARD ---
@@ -352,7 +369,6 @@ if arquivos_amil:
         with aba4:
             st.markdown("### 📋 Lista de Pendências Ativas por Orçamento do Paciente")
             
-            # Gráfico Corrigido: Consolida o valor real e único por paciente em cada setor (impede inflar duplicado)
             if arquivos_setores and not df_s_consolidado.empty:
                 st.markdown("#### 📊 Distribuição Financeira Total Retida por Setor (Valor do Orçamento)")
                 
@@ -364,7 +380,6 @@ if arquivos_amil:
                     "TO": "Terapia Ocupacional", "PSICO": "Psicologia"
                 }
                 
-                # Cruza as pendências de setor com a tabela principal para pegar o 'Valor a Cobrar' real e único
                 for setor in setores_alvo:
                     atendimentos_do_setor = df_s_consolidado[df_s_consolidado['Grupo Especialidade'].str.upper().str.contains(setor)]['Nº Atendimento'].unique()
                     sub_df_pacientes = df[df['Nr. Atendimento'].isin(atendimentos_do_setor)]
