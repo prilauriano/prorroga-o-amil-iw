@@ -320,20 +320,28 @@ if arquivos_amil:
         df_riohome = df_producao_limpa[df_producao_limpa['É_RioHome'] == True].copy()
         df_faturamento_geral = df_producao_limpa[df_producao_limpa['É_RioHome'] == False].copy()
 
-        # 🔥 FILTRAGEM CORRIGIDA DA FILA DO ROBÔ: Remove nomes vazios e exclui implantação/operação técnicos
         df_fila_robo = df_faturamento_geral[
             (df_faturamento_geral['É_Robo'] == True) & 
+            (df_faturamento_geral['Inserido_Amil'] == False) &
             (df_faturamento_geral['nome do paciente'].str.strip() != "") & 
             (~df_faturamento_geral['status aut orç'].str.lower().str.contains('implantação|implantacao|operação|operacao', na=False))
         ].copy()
         
         df_faturamento_geral_sem_robo = df_faturamento_geral[df_faturamento_geral['É_Robo'] == False].copy()
 
-        df_liberados = df_faturamento_geral_sem_robo[(df_faturamento_geral_sem_robo['Inserido_Amil'] == False) & (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == False)].copy()
+        # 🔥 ABA DE LIBERADOS CORRIGIDA DEFINITIVAMENTE: Não aceita pacientes com status contendo Prontuário, OPS ou Pendente
+        df_liberados = df_faturamento_geral_sem_robo[
+            (df_faturamento_geral_sem_robo['Inserido_Amil'] == False) & 
+            (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == False) &
+            (~df_faturamento_geral_sem_robo['status aut orç'].str.lower().str.contains('prontuário|prontuario|ops|pendente', na=False))
+        ].copy()
         df_liberados = df_liberados.sort_values(by='valor_calculado', ascending=False)
 
+        # ABA DE PRONTUÁRIO PENDENTE CORRIGIDA: Listado se tiver pendência no setor E se a guia TISS estiver vazia (Inserido_Amil == False)
         df_prontuario = df_faturamento_geral_sem_robo[
-            (df_faturamento_geral_sem_robo['status aut orç'] == 'Prontuário Pendente') & (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == True)
+            (df_faturamento_geral_sem_robo['status aut orç'] == 'Prontuário Pendente') & 
+            (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == True) &
+            (df_faturamento_geral_sem_robo['Inserido_Amil'] == False)
         ].sort_values(by='valor_calculado', ascending=False) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else pd.DataFrame()
         
         df_ops = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['status aut orç'] == 'OPS Pendente'].sort_values(by='valor_calculado', ascending=False) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else pd.DataFrame()
