@@ -320,7 +320,13 @@ if arquivos_amil:
         df_riohome = df_producao_limpa[df_producao_limpa['É_RioHome'] == True].copy()
         df_faturamento_geral = df_producao_limpa[df_producao_limpa['É_RioHome'] == False].copy()
 
-        df_fila_robo = df_faturamento_geral[df_faturamento_geral['É_Robo'] == True].copy()
+        # 🔥 FILTRAGEM CORRIGIDA DA FILA DO ROBÔ: Remove nomes vazios e exclui implantação/operação técnicos
+        df_fila_robo = df_faturamento_geral[
+            (df_faturamento_geral['É_Robo'] == True) & 
+            (df_faturamento_geral['nome do paciente'].str.strip() != "") & 
+            (~df_faturamento_geral['status aut orç'].str.lower().str.contains('implantação|implantacao|operação|operacao', na=False))
+        ].copy()
+        
         df_faturamento_geral_sem_robo = df_faturamento_geral[df_faturamento_geral['É_Robo'] == False].copy()
 
         df_liberados = df_faturamento_geral_sem_robo[(df_faturamento_geral_sem_robo['Inserido_Amil'] == False) & (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == False)].copy()
@@ -393,7 +399,7 @@ if arquivos_amil:
                 nomes_exibicao = {
                     "FISIO": "Fisioterapia", "FONO": "Fonoaudiologia", 
                     "NUTRI": "Nutrição", "TERAPIA OCUPACIONAL": "Terapia Ocupacional",
-                    "TO": "Terapia Ocupacional", "PSICO": "Pacologia"
+                    "TO": "Terapia Ocupacional", "PSICO": "Psicologia"
                 }
                 
                 col_s_esp_nome = next((c for c in df_s_consolidado.columns if 'grupo especialidade' in c or 'especialidade' in c), None)
@@ -471,7 +477,6 @@ if arquivos_amil:
             st.markdown("### 🤖 Fila de Pacientes Encaminhados para Input Automatizado")
             st.markdown(f"**Volumetria Atual do Robô: {len(df_fila_robo)} pacientes na fila.**")
             if len(df_fila_robo) > 0:
-                # 🔥 CORREÇÃO FIXADA AQUI: 'status aut orç' mapeado em minúsculo e style corrigido com Real formatado
                 df_robo_view = df_fila_robo[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'status aut orç', 'valor_calculado']].copy()
                 df_robo_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Status Atual', 'Valor a Cobrar (R$)']
                 st.dataframe(df_robo_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
