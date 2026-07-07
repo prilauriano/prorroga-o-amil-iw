@@ -317,8 +317,8 @@ if arquivos_amil:
         df_base_erros = df[df['Possui_Erro_Critico'] == True].copy()
         df_producao_limpa = df[df['Possui_Erro_Critico'] == False].copy()
 
-        df_riohome = df_producao_limpa[df_producao_limpa['É_RioHome'] == True].copy()
-        df_faturamento_geral = df_producao_limpa[df_producao_limpa['É_RioHome'] == False].copy()
+        df_riohome = df_producao_limpa[df_producao_limpa['é_riohome'] == True].copy()
+        df_faturamento_geral = df_producao_limpa[df_producao_limpa['é_riohome'] == False].copy()
 
         df_fila_robo = df_faturamento_geral[
             (df_faturamento_geral['É_Robo'] == True) & 
@@ -329,19 +329,19 @@ if arquivos_amil:
         
         df_faturamento_geral_sem_robo = df_faturamento_geral[df_faturamento_geral['É_Robo'] == False].copy()
 
-        # 🔥 ABA DE LIBERADOS CORRIGIDA DEFINITIVAMENTE: Não aceita pacientes com status contendo Prontuário, OPS ou Pendente
+        # 🔥 CORREÇÃO DA REGRA DE LIBERADOS: Filtra cirurgicamente apenas os status e justificativas administrativas travadas (Impede sumir com a base)
         df_liberados = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['Inserido_Amil'] == False) & 
             (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == False) &
-            (~df_faturamento_geral_sem_robo['status aut orç'].str.lower().str.contains('prontuário|prontuario|ops|pendente', na=False))
+            (~df_faturamento_geral_sem_robo['status aut orç'].str.lower().str.contains('prontuário|prontuario|ops pendente', na=False)) &
+            (~df_faturamento_geral_sem_robo[col_justificativa].str.lower().str.contains('operação pendente|operacao pendente', na=False) if col_justificativa else True)
         ].copy()
         df_liberados = df_liberados.sort_values(by='valor_calculado', ascending=False)
 
-        # ABA DE PRONTUÁRIO PENDENTE CORRIGIDA: Listado se tiver pendência no setor E se a guia TISS estiver vazia (Inserido_Amil == False)
+        # 🔥 CORREÇÃO DE PRONTUÁRIO PENDENTE: Baseia-se unicamente no status oficial do IW casado com a Planilha 2 (Segurança total contra falsos vazios)
         df_prontuario = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['status aut orç'] == 'Prontuário Pendente') & 
-            (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == True) &
-            (df_faturamento_geral_sem_robo['Inserido_Amil'] == False)
+            (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == True)
         ].sort_values(by='valor_calculado', ascending=False) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else pd.DataFrame()
         
         df_ops = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['status aut orç'] == 'OPS Pendente'].sort_values(by='valor_calculado', ascending=False) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else pd.DataFrame()
