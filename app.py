@@ -323,10 +323,8 @@ if arquivos_amil:
 
         df['Tem_Pendencia_TO_Ativa'] = df.apply(checar_to_bloqueante_final, axis=1)
         
-        # O travamento de setor agora é inteligente: TO falsa/resolvida NÃO TRAVA o paciente de jeito nenhum!
         df['Tem_Pendencia_Setor'] = (df['Tem_Outra_Pendencia_Setor'] | df['Tem_Pendencia_TO_Ativa']) & (~df['É_Robo'])
 
-        # Limpamos os setores repetidos ou falsos de TO e construímos a coluna correta para exibição
         if arquivos_setores and not df_s_consolidado.empty:
             df_s_ativos_reais = []
             for _, idx_row in df_s_consolidado.iterrows():
@@ -408,19 +406,25 @@ if arquivos_amil:
             card6.metric("VALOR TOTAL EM PENDÊNCIA TÉCNICA", f"R$ {valor_total_pendencias_setores:,.2f}")
 
         with aba2:
-            st.markdown("### 👤 Carga Operacional e Rastreabilidade de Inputs (Robô vs Manual)")
+            st.markdown("### 👤 Carga Operacional e Rastreabilidade de Inputs (Código Antigo Restaurado)")
             if col_responsavel in df_producao_limpa.columns:
                 df_producao_limpa['Valor_ID'] = df_producao_limpa.apply(lambda r: r['valor_calculado'] if r['Is_ID'] else 0.0, axis=1)
                 df_producao_limpa['Valor_AD'] = df_producao_limpa.apply(lambda r: r['valor_calculado'] if r['Is_AD'] else 0.0, axis=1)
+                
+                # Regras clássicas de contagem do robô e manual do código original
                 df_producao_limpa['Robo_Contado'] = df_producao_limpa['Origem_Input_Calculado'] == "Robô"
                 df_producao_limpa['Manual_Contado'] = df_producao_limpa['Origem_Input_Calculado'] == "Manual"
                 
                 prod_colab = df_producao_limpa.groupby(col_responsavel).agg(
-                    Pacientes_ID=('Is_ID', 'sum'), Pacientes_AD=('Is_AD', 'sum'),
-                    Soma_Valor_ID=('Valor_ID', 'sum'), Soma_Valor_AD=('Valor_AD', 'sum'),
-                    Inputs_pelo_Robo=('Robo_Contado', 'sum'), Inputs_Manuais=('Manual_Contado', 'sum'),
+                    Pacientes_ID=('Is_ID', 'sum'),
+                    Pacientes_AD=('Is_AD', 'sum'),
+                    Soma_Valor_ID=('Valor_ID', 'sum'),
+                    Soma_Valor_AD=('Valor_AD', 'sum'),
+                    Inputs_pelo_Robo=('Robo_Contado', 'sum'),
+                    Inputs_Manuais=('Manual_Contado', 'sum'),
                     Total_Geral_Pacientes=('nome do paciente', 'count')
                 ).reset_index()
+                
                 prod_colab.columns = ['Colaborador (Responsável)', 'Nº Pacientes ID', 'Nº Pacientes AD', 'Valor Total de ID (R$)', 'Valor Total de AD (R$)', 'Inputs Concluídos p/ Robô', 'Inputs Concluídos Manuais', 'Quantitativo Total']
                 st.dataframe(prod_colab.style.format({'Valor Total de ID (R$)': 'R$ {:,.2f}', 'Valor Total de AD (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
@@ -432,7 +436,7 @@ if arquivos_amil:
         with aba4:
             st.markdown("### 📋 Lista de Pendências Ativas por Orçamento do Paciente")
             
-            # 📊 SINCRONIZAÇÃO COMPLETA DO GRÁFICO COM AS PLANILHAS ABAIXO
+            # 📊 SINCRONIZAÇÃO COMPLETA DO GRÁFICO COM VALORES EM REAL (R$)
             lista_atendimentos_visiveis = []
             if not df_prontuario.empty:
                 lista_atendimentos_visiveis.extend(df_prontuario[col_atendimento].tolist())
@@ -442,7 +446,6 @@ if arquivos_amil:
             if arquivos_setores and len(lista_atendimentos_visiveis) > 0 and not df_s_consolidado.empty:
                 df_s_filtrado_grafico = df_s_consolidado[df_s_consolidado[col_s_atend].isin(lista_atendimentos_visiveis)].copy()
                 
-                # Só puxamos os setores que restaram ativos baseados nas regras estritas de filtragem
                 df_s_filtrado_grafico = df_s_filtrado_grafico[
                     ((df_s_filtrado_grafico['setor_normalizado'] == "Terapia Ocupacional") & (df_s_filtrado_grafico[col_s_atend].isin(atendimentos_com_pendencia_to_estrita))) |
                     ((df_s_filtrado_grafico['setor_normalizado'] != "Terapia Ocupacional") & (df_s_filtrado_grafico[col_s_atend].isin(atendimentos_com_outras_pendencias)))
@@ -457,16 +460,36 @@ if arquivos_amil:
                 df_grafico_pizza = df_grafico_pizza[df_grafico_pizza['Valor Total Retido'] > 0].sort_values(by="Valor Total Retido", ascending=False)
                 
                 if not df_grafico_pizza.empty:
-                    st.markdown("#### 📊 Distribuição Financeira Total Ativa (Sincronizada com as Tabelas)")
-                    fig_valores = px.bar(df_grafico_pizza, x='Setor Técnico', y='Valor Total Retido', color='Valor Total Retido', color_continuous_scale='Oryel', text_auto='R$ ,.2f')
-                    fig_valores.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=10, b=10, l=10, r=10))
+                    st.markdown("#### 📊 Distribuição Financeira Total Ativa")
+                    
+                    # Customização do texto sobre as barras para exibir em formato Real brasileiro (R$)
+                    fig_valores = px.bar(
+                        df_grafico_pizza, 
+                        x='Setor Técnico', 
+                        y='Valor Total Retido', 
+                        color='Valor Total Retido', 
+                        color_continuous_scale='Oryel',
+                        labels={'Valor Total Retido': 'Valor Retido (R$)'}
+                    )
+                    
+                    # Formatação exata do texto das barras para R$
+                    fig_valores.update_traces(
+                        texttemplate='R$ %{y:,.2f}', 
+                        textposition='outside'
+                    )
+                    
+                    fig_valores.update_layout(
+                        plot_bgcolor='rgba(0,0,0,0)', 
+                        paper_bgcolor='rgba(0,0,0,0)', 
+                        margin=dict(t=30, b=10, l=10, r=10),
+                        yaxis=dict(tickprefix="R$ ", tickformat=",.2f")
+                    )
                     st.plotly_chart(fig_valores, use_container_width=True)
 
             tab_p, tab_o = st.tabs(["📄 Prontuário Pendente (Filtro Unificado)", "🏢 OPS Pendente (Operação)"])
             with tab_p:
                 if not df_prontuario.empty:
                     st.markdown(f"**Total de Processos: {len(df_prontuario)} | Montante: R$ {df_prontuario['valor_calculado'].sum():,.2f}**")
-                    # Colunas totalmente restauradas: Setores Pendentes e Responsável ativos e intocados!
                     df_p_view = df_prontuario[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', col_responsavel, 'valor_calculado']].copy()
                     df_p_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor do Paciente (R$)']
                     
@@ -480,7 +503,6 @@ if arquivos_amil:
             with tab_o:
                 if not df_ops.empty:
                     st.markdown(f"**Total de Processos: {len(df_ops)} | Montante: R$ {df_ops['valor_calculado'].sum():,.2f}**")
-                    # Colunas totalmente restauradas: Setores Pendentes e Responsável ativos e intocados!
                     df_o_view = df_ops[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', col_responsavel, 'valor_calculado']].copy()
                     df_o_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor do Paciente (R$)']
                     
@@ -497,6 +519,8 @@ if arquivos_amil:
                 st.warning("⚠️ Para ver quem está liberado, carregue a planilha de Setores no campo de upload.")
             else:
                 st.markdown(f"**🔥 Total Prontos para Input: {len(df_liberados)} | Valor de Giro Rápido: R$ {df_liberados['valor_calculado'].sum():,.2f}**")
+                
+                # RETORNADO O CAMPO COL_RESPONSAVEL ("Responsável") PARA A EXIBIÇÃO E EXCEL
                 df_liberados_clean_excel = df_liberados[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', col_responsavel, 'valor_calculado']].copy()
                 df_liberados_clean_excel.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo Atendimento', 'Responsável', 'Valor a Cobrar (R$)']
                 
