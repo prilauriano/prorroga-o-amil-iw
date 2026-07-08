@@ -238,9 +238,6 @@ if arquivos_amil:
         atendimentos_com_pendencia_to_estrita = set()
         df_s_consolidado = pd.DataFrame()
         
-        # Mapeamento do link entre Atendimento da Base Amil e o Paciente da Planilha 2
-        mapa_atendimento_para_nome_paciente = dict(zip(df[col_atendimento], df['nome do paciente_limpo']))
-        
         if arquivos_setores:
             lista_dfs_setores = []
             for arq_s in arquivos_setores:
@@ -265,7 +262,6 @@ if arquivos_amil:
                 df_s_consolidado['nome_paciente_p2'] = df_s_consolidado[col_s_nome].astype(str).str.lower().str.strip()
                 df_s_consolidado['template_p2'] = df_s_consolidado[col_s_template].fillna('').astype(str).str.upper().str.strip()
                 
-                # Se a coluna especialidade existir, limpa para string, senão cria uma padrão
                 if col_s_esp:
                     df_s_consolidado['especialidade_limpa'] = df_s_consolidado[col_s_esp].fillna('Outros').astype(str).str.strip()
                 else:
@@ -278,32 +274,26 @@ if arquivos_amil:
                     nome_p2 = str(linha['nome_paciente_p2'])
                     template_p2 = str(linha['template_p2'])
                     
-                    # Se o template na Planilha 2 contiver "TO"
                     if "TO" in template_p2:
-                        # Verifica se o paciente existe na Planilha 3
                         if nome_p2 in nomes_entregues_planilha3:
-                            return "RESOLVIDO_TO" # Relatório recebido -> Sem pendência
+                            return "RESOLVIDO_TO"
                         else:
-                            return "TO (Pendência Ativa)" # Não encontrado -> Pendência permanece
+                            return "TO (Pendência Ativa)"
                     return "OUTRO"
 
                 df_s_consolidado['status_validacao_to'] = df_s_consolidado.apply(aplicar_nova_regra_validacao_to, axis=1)
 
-                # Processa os conjuntos de atendimentos bloqueados ou liberados
                 for _, linha in df_s_consolidado.iterrows():
                     atend = str(linha[col_s_atend])
                     status_to = str(linha['status_validacao_to'])
                     esp = str(linha['especialidade_limpa']).upper()
                     
-                    # Tratando a pendência de TO pela regra estrita solicitada
                     if status_to == "TO (Pendência Ativa)":
                         atendimentos_com_pendencia_to_estrita.add(atend)
                     
-                    # Mapeia outras pendências que não sejam TO do fluxo tradicional
                     if status_to == "OUTRO" and not ("TO" in esp or "TERAPIA OCUPACIONAL" in esp):
                         atendimentos_com_outras_pendencias.add(atend)
 
-                # Limpeza do texto visual que vai aparecer na coluna do Dashboard
                 def ajustar_texto_especialidades_visual(linha):
                     status_to = str(linha['status_validacao_to'])
                     esp_original = str(linha['especialidade_limpa'])
@@ -313,10 +303,10 @@ if arquivos_amil:
                         return "Terapia Ocupacional"
                     return esp_original
 
+                df_s_visual['status_validacao_to'] = df_s_visual.apply(aplicar_nova_regra_validacao_to, axis=1)
                 df_s_visual['especialidade_exibicao'] = df_s_visual.apply(ajustar_texto_especialidades_visual, axis=1)
                 df_s_visual = df_s_visual[df_s_visual['especialidade_exibicao'] != "REMOVER"]
 
-                # Agrupa os setores limpos para bater com a tabela Amil
                 setores_agrupados = df_s_visual.groupby(col_s_atend)['especialidade_exibicao'].apply(
                     lambda x: ', '.join(sorted(set(x)))
                 ).reset_index()
@@ -326,13 +316,11 @@ if arquivos_amil:
         df['Especialidades Pendentes'] = df['Especialidades Pendentes'].fillna('Nenhuma pendência técnica apontada')
         df.loc[df['Especialidades Pendentes'] == '', 'Especialidades Pendentes'] = 'Nenhuma pendência técnica apontada'
         
-        # Vinculação das flags finais de trava de fluxo
         df['Tem_Outra_Pendencia_Setor'] = df[col_atendimento].isin(atendimentos_com_outras_pendencias)
         
         def checar_to_bloqueante_final(linha):
             atend = str(linha[col_atendimento])
             nome_amil = str(linha['nome do paciente_limpo'])
-            # Dupla checagem: Se o nome estiver na P3, sob hipótese alguma gera pendência
             if nome_amil in nomes_entregues_planilha3: 
                 return False
             return atend in atendimentos_com_pendencia_to_estrita
@@ -399,7 +387,7 @@ if arquivos_amil:
 
         with aba2:
             st.markdown("### 👤 Carga Operacional e Rastreabilidade de Inputs (Robô vs Manual)")
-            col_responsavel = 'persona resp aut'
+            col_responsavel = 'pessoa resp aut'
             if col_responsavel in df_producao_limpa.columns:
                 df_producao_limpa['Valor_ID'] = df_producao_limpa.apply(lambda r: r['valor_calculado'] if r['Is_ID'] else 0.0, axis=1)
                 df_producao_limpa['Valor_AD'] = df_producao_limpa.apply(lambda r: r['valor_calculado'] if r['Is_AD'] else 0.0, axis=1)
@@ -469,11 +457,11 @@ if arquivos_amil:
 
         with aba5:
             st.markdown("### 🚀 Pacientes Liberados (Sem Pendências nos Setores)")
-            if not archivos_setores:
+            if not arquivos_setores:
                 st.warning("⚠️ Para ver quem está liberado, carregue a planilha de Setores no campo de upload.")
             else:
                 st.markdown(f"**🔥 Total Prontos para Input: {len(df_liberados)} | Valor de Giro Rápido: R$ {df_liberados['valor_calculado'].sum():,.2f}**")
-                df_liberados_clean_excel = df_liberados[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'pessoa resp aut', 'valor_calculado']].copy()
+                df_liberados_clean_excel = df_liberados[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'persona resp aut', 'valor_calculado']].copy()
                 df_liberados_clean_excel.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo Atendimento', 'Responsável', 'Valor a Cobrar (R$)']
                 
                 buffer_liberados = io.BytesIO()
@@ -493,14 +481,14 @@ if arquivos_amil:
 
         with aba6:
             st.markdown("### 🏠 Listagem Isolada — Contrato RioHome")
-            df_riohome_view = df_riohome[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'pessoa resp aut', 'status aut orç', 'valor_calculado']].copy()
+            df_riohome_view = df_riohome[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'persona resp aut', 'status aut orç', 'valor_calculado']].copy()
             df_riohome_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Responsável', 'Status Atual IW', 'Valor a Cobrar (R$)']
             st.dataframe(df_riohome_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
         with aba7:
             st.markdown("### 🚨 Alertas de Erro: Arquivo Não Encontrado")
             if len(df_base_erros) > 0:
-                colunas_erro = [col_atendimento, 'id orçam.', 'nome do paciente', 'status aut orç', 'pessoa resp aut']
+                colunas_erro = [col_atendimento, 'id orçam.', 'nome do paciente', 'status aut orç', 'persona resp aut']
                 if col_status_rel: colunas_erro.insert(3, col_status_rel)
                 df_erro_print = df_base_erros[colunas_erro].copy()
                 colunas_visualizacao = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Status Aut Orç', 'Responsável']
