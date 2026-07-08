@@ -146,8 +146,9 @@ if arquivos_amil:
         col_valor = next((col for col in df.columns if 'valor a cobrar' in col or 'valor' in col), 'valor a cobrar')
         col_atendimento = next((col for col in df.columns if 'nr. atendimento' in col or 'nº atendimento' in col or 'nr.atendimento' in col), 'nr. atendimento')
         col_classificacao = next((col for col in df.columns if 'classific. atendimento' in col or 'classific.' in col or 'classificacao' in col), 'classific. atendimento')
+        col_responsavel = next((col for col in df.columns if 'resp' in col or 'pessoa' in col or 'persona' in col), 'pessoa resp aut')
         
-        campos_obrigatorios = ['nº guia solicitação (tiss)', 'senha aprovação', 'status aut orç', 'nr. matricula', 'pessoa resp aut', col_classificacao, 'nome do paciente', 'id orçam.']
+        campos_obrigatorios = ['nº guia solicitação (tiss)', 'senha aprovação', 'status aut orç', 'nr. matricula', col_responsavel, col_classificacao, 'nome do paciente', 'id orçam.']
         if col_justificativa: campos_obrigatorios.append(col_justificativa)
         if col_status_rel: campos_obrigatorios.append(col_status_rel)
         if col_contrato: campos_obrigatorios.append(col_contrato)
@@ -274,7 +275,6 @@ if arquivos_amil:
                 def aplicar_nova_regra_validacao_to(linha):
                     nome_p2 = str(linha['nome_paciente_p2'])
                     template_p2 = str(linha['template_p2'])
-                    
                     if "TO" in template_p2:
                         if nome_p2 in nomes_entregues_planilha3:
                             return "RESOLVIDO_TO"
@@ -331,19 +331,14 @@ if arquivos_amil:
             return atend in atendimentos_com_pendencia_to_estrita
 
         df['Tem_Pendencia_TO_Ativa'] = df.apply(checar_to_bloqueante_final, axis=1)
-        
-        # O paciente só tem pendência técnica real se tiver uma pendência ativa legítima
         df['Tem_Pendencia_Setor'] = (df['Tem_Outra_Pendencia_Setor'] | df['Tem_Pendencia_TO_Ativa']) & (~df['É_Robo'])
 
-        # Geração dinâmica da listagem de strings de setores para a tabela do Streamlit
         if not df_s_visual.empty:
-            # Filtra o df_s_visual para refletir apenas as pendências que de fato restaram ativas por paciente
             df_s_ativos_apenas = []
             for _, idx_row in df_s_visual.iterrows():
                 atend_id = str(idx_row[col_s_atend])
                 setor_nome = str(idx_row['especialidade_exibicao'])
                 
-                # Regra estrita de amarração
                 if setor_nome == "Terapia Ocupacional" and atend_id in atendimentos_com_pendencia_to_estrita:
                     df_s_ativos_apenas.append(idx_row)
                 elif setor_nome != "Terapia Ocupacional" and atend_id in atendimentos_com_outras_pendencias:
@@ -357,7 +352,6 @@ if arquivos_amil:
                 setores_agrupados.columns = [col_atendimento, 'Especialidades Pendentes']
                 df = pd.merge(df, setores_agrupados, on=col_atendimento, how='left')
                 
-                # DataFrame mapeado para o gráfico
                 df_setores_valores = pd.merge(df_s_visual_filtrado[[col_s_atend, 'especialidade_exibicao']], df[['nr. atendimento', 'valor_calculado', 'Tem_Pendencia_Setor']], left_on=col_s_atend, right_on='nr. atendimento', how='inner')
                 df_setores_valores = df_setores_valores[df_setores_valores['Tem_Pendencia_Setor'] == True]
             else:
@@ -382,7 +376,6 @@ if arquivos_amil:
         
         df_faturamento_geral_sem_robo = df_faturamento_geral[df_faturamento_geral['É_Robo'] == False].copy()
 
-        # Filtragem das filas de Prontuários e Operação corrigidas para olhar para a regra unificada
         df_prontuario = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['status aut orç'] == 'Prontuário Pendente') & 
             (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == True)
@@ -425,7 +418,6 @@ if arquivos_amil:
 
         with aba2:
             st.markdown("### 👤 Carga Operacional e Rastreabilidade de Inputs (Robô vs Manual)")
-            col_responsavel = 'persona resp aut'
             if col_responsavel in df_producao_limpa.columns:
                 df_producao_limpa['Valor_ID'] = df_producao_limpa.apply(lambda r: r['valor_calculado'] if r['Is_ID'] else 0.0, axis=1)
                 df_producao_limpa['Valor_AD'] = df_producao_limpa.apply(lambda r: r['valor_calculado'] if r['Is_AD'] else 0.0, axis=1)
@@ -464,7 +456,7 @@ if arquivos_amil:
             with tab_p:
                 if not df_prontuario.empty:
                     st.markdown(f"**Total de Processos: {len(df_prontuario)} | Montante: R$ {df_prontuario['valor_calculado'].sum():,.2f}**")
-                    df_p_view = df_prontuario[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', 'pessoa resp aut', 'valor_calculado']].copy()
+                    df_p_view = df_prontuario[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', col_responsavel, 'valor_calculado']].copy()
                     df_p_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor do Paciente (R$)']
                     
                     buffer_p = io.BytesIO()
@@ -477,7 +469,7 @@ if arquivos_amil:
             with tab_o:
                 if not df_ops.empty:
                     st.markdown(f"**Total de Processos: {len(df_ops)} | Montante: R$ {df_ops['valor_calculado'].sum():,.2f}**")
-                    df_o_view = df_ops[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', 'pessoa resp aut', 'valor_calculado']].copy()
+                    df_o_view = df_ops[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', col_responsavel, 'valor_calculado']].copy()
                     df_o_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor do Paciente (R$)']
                     
                     buffer_o = io.BytesIO()
@@ -493,7 +485,7 @@ if arquivos_amil:
                 st.warning("⚠️ Para ver quem está liberado, carregue a planilha de Setores no campo de upload.")
             else:
                 st.markdown(f"**🔥 Total Prontos para Input: {len(df_liberados)} | Valor de Giro Rápido: R$ {df_liberados['valor_calculado'].sum():,.2f}**")
-                df_liberados_clean_excel = df_liberados[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'pessoa resp aut', 'valor_calculado']].copy()
+                df_liberados_clean_excel = df_liberados[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', col_responsavel, 'valor_calculado']].copy()
                 df_liberados_clean_excel.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo Atendimento', 'Responsável', 'Valor a Cobrar (R$)']
                 
                 buffer_liberados = io.BytesIO()
@@ -513,14 +505,14 @@ if arquivos_amil:
 
         with aba6:
             st.markdown("### 🏠 Listagem Isolada — Contrato RioHome")
-            df_riohome_view = df_riohome[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'persona resp aut', 'status aut orç', 'valor_calculado']].copy()
+            df_riohome_view = df_riohome[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', col_responsavel, 'status aut orç', 'valor_calculado']].copy()
             df_riohome_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Responsável', 'Status Atual IW', 'Valor a Cobrar (R$)']
             st.dataframe(df_riohome_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
         with aba7:
             st.markdown("### 🚨 Alertas de Erro: Arquivo Não Encontrado")
             if len(df_base_erros) > 0:
-                colunas_erro = [col_atendimento, 'id orçam.', 'nome do paciente', 'status aut orç', 'persona resp aut']
+                colunas_erro = [col_atendimento, 'id orçam.', 'nome do paciente', 'status aut orç', col_responsavel]
                 if col_status_rel: colunas_erro.insert(3, col_status_rel)
                 df_erro_print = df_base_erros[colunas_erro].copy()
                 colunas_visualizacao = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Status Aut Orç', 'Responsável']
