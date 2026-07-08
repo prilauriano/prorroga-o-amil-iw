@@ -435,7 +435,7 @@ if arquivos_amil:
 
         with aba5:
             st.markdown("### 🚀 Pacientes Liberados (Sem Pendências nos Setores)")
-            if not archivos_setores:
+            if not arquivos_setores:
                 st.warning("⚠️ Para ver quem está liberado, carregue a planilha de Setores no campo de upload.")
             else:
                 st.markdown(f"**🔥 Total Prontos para Input: {len(df_liberados)} | Valor de Giro Rápido: R$ {df_liberados['valor_calculado'].sum():,.2f}**")
