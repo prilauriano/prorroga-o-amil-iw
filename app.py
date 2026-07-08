@@ -118,7 +118,7 @@ col_up1, col_up2, col_up3 = st.columns(3)
 with col_up1:
     arquivos_amil = st.file_uploader("1 - PRORROGAÇÃO (.csv/.xlsx)", type=["csv", "xlsx"], accept_multiple_files=True)
 with col_up2:
-    arquivos_setores = st.file_uploader("2 - RELATÓRIOS DAS ESPECIALIDADES (Todas as Pendências)", type=["csv", "xlsx"], accept_multiple_files=True)
+    arquivos_setores = st.file_uploader("2 - RELATÓRIOS DAS ESPECILIDADES (Todas as Pendências)", type=["csv", "xlsx"], accept_multiple_files=True)
 with col_up3:
     arquivos_to = st.file_uploader("3 - PACIENTES TO COM EVOLUÇÃO (Liberações de TO)", type=["csv", "xlsx"], accept_multiple_files=True)
 
@@ -345,14 +345,21 @@ if arquivos_amil:
         
         df_faturamento_geral_sem_robo = df_faturamento_geral[df_faturamento_geral['É_Robo'] == False].copy()
 
-        # 🌟 REGRA EXTRAÇÃO E NORMALIZAÇÃO DE STATUS "EM AVALIAÇÃO" 🌟
+        # 🌟 EXTRAÇÃO E NORMALIZAÇÃO DE STATUS DO ORÇAMENTO 🌟
         df_faturamento_geral_sem_robo['Status_Aut_Orc_Lower'] = df_faturamento_geral_sem_robo['status aut orç'].str.lower().str.strip() if 'status aut orç' in df_faturamento_geral_sem_robo.columns else ''
+        
         is_em_avaliacao = df_faturamento_geral_sem_robo['Status_Aut_Orc_Lower'] == 'em avaliação'
+        is_em_branco = df_faturamento_geral_sem_robo['Status_Aut_Orc_Lower'] == ''
+        
+        # 🌟 REGRA ADICIONAL: Identifica se possui termos de "implantação" no status
+        is_implantacao = df_faturamento_geral_sem_robo['Status_Aut_Orc_Lower'].str.contains('implantação|implantacao', na=False)
 
-        # Filtragem da fila de Liberados para Input (Removendo "Em avaliação")
+        # Filtragem da fila de Liberados para Input (Removendo em avaliação, em branco e termos de implantação)
         df_liberados = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['Inserido_Amil'] == False) & 
             (~is_em_avaliacao) & 
+            (~is_em_branco) & 
+            (~is_implantacao) & # 🌟 NOVA REGRA: Impede que implantações/pendentes apareçam nos liberados
             (df_faturamento_geral_sem_robo['Tem_Outra_Pendencia_Setor'] == False) &
             (df_faturamento_geral_sem_robo['Tem_Pendencia_TO_Ativa'] == False) &
             (~df_faturamento_geral_sem_robo['Status_Aut_Orc_Lower'].str.contains('prontuário|prontuario|ops pendente', na=False)) &
@@ -364,13 +371,15 @@ if arquivos_amil:
         df_prontuario = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['status aut orç'] == 'Prontuário Pendente') & 
             (~is_em_avaliacao) & 
+            (~is_em_branco) &
             (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == True)
         ].sort_values(by='valor_calculado', ascending=False) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else pd.DataFrame()
         
         # Filtragem de OPS Pendentes (Removendo "Em avaliação")
         df_ops = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['status aut orç'] == 'OPS Pendente') &
-            (~is_em_avaliacao)
+            (~is_em_avaliacao) &
+            (~is_em_branco)
         ].sort_values(by='valor_calculado', ascending=False) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else pd.DataFrame()
 
         # Métricas globais
@@ -452,7 +461,7 @@ if arquivos_amil:
                         df_p_view.to_excel(writer, sheet_name='Prontuário Pendente', index=False)
                     st.download_button(label="📥 Baixar Planilha Estruturada: Prontuário Pendente", data=buffer_p.getvalue(), file_name="prontuario_pendente_priorizado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                     st.dataframe(df_p_view.style.format({'Valor do Paciente (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
-                else: st.info("Nenhuma pendência de prontuário ativa.")
+                else: st.info("Nenhuma pendência de prontuário activa.")
                 
             with tab_o:
                 if not df_ops.empty:
@@ -465,7 +474,7 @@ if arquivos_amil:
                         df_o_view.to_excel(writer, sheet_name='OPS Pendente', index=False)
                     st.download_button(label="📥 Baixar Planilha Estruturada: Pendências da Operação", data=buffer_o.getvalue(), file_name="ops_pendente_estruturado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                     st.dataframe(df_o_view.style.format({'Valor do Paciente (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
-                else: st.info("Nenhuma pendência de OPS ativa.")
+                else: st.info("Nenhuma pendência de OPS activa.")
 
         with aba5:
             st.markdown("### 🚀 Pacientes Liberados (Sem Pendências nos Setores)")
