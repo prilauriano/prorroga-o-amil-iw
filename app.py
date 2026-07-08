@@ -216,8 +216,8 @@ if arquivos_amil:
 
         df['Possui_Erro_Critico'] = df[col_status_rel].str.lower().str.contains("arquivo não encontrado|arquivo nao encontrado", na=False) if col_status_rel else False
 
-        # --- 📑 LEITURA DA PLANILHA 3 (TO COM EVOLUÇÃO) ---
-        nomes_resolvidos_to = set()
+        # --- 📑 LEITURA DA PLANILHA 3 (PACIENTES TO COM EVOLUÇÃO) ---
+        nomes_entregues_planilha3 = set()
         if arquivos_to:
             for arq_to in arquivos_to:
                 if arq_to.name.endswith('.csv'):
@@ -228,14 +228,18 @@ if arquivos_amil:
                 else:
                     df_to_temp = pd.read_excel(arq_to)
                 df_to_temp.columns = df_to_temp.columns.str.strip().str.lower()
+                
                 col_nome_to = next((col for col in df_to_temp.columns if 'nome' in col or 'paciente' in col), None)
                 if col_nome_to:
-                    nomes_resolvidos_to.update(df_to_temp[col_nome_to].dropna().astype(str).str.lower().str.strip().unique())
+                    nomes_entregues_planilha3.update(df_to_temp[col_nome_to].dropna().astype(str).str.lower().str.strip().unique())
 
         # --- ⚙️ PROCESSAMENTO DA PLANILHA 2 (SETORES TÉCNICOS) ---
         atendimentos_com_outras_pendencias = set()
         atendimentos_com_pendencia_to_estrita = set()
         df_s_consolidado = pd.DataFrame()
+        
+        # Mapeamento do link entre Atendimento da Base Amil e o Paciente da Planilha 2
+        mapa_atendimento_para_nome_paciente = dict(zip(df[col_atendimento], df['nome do paciente_limpo']))
         
         if arquivos_setores:
             lista_dfs_setores = []
@@ -253,51 +257,87 @@ if arquivos_amil:
             df_s_consolidado = pd.concat(lista_dfs_setores, ignore_index=True)
             col_s_atend = next((c for c in df_s_consolidado.columns if 'nº atendimento' in c or 'nr. atendimento' in c or 'atendimento' in c), None)
             col_s_esp = next((c for c in df_s_consolidado.columns if 'grupo especialidade' in c or 'especialidade' in c), None)
-            col_s_nome = next((c for c in df_s_consolidado.columns if 'nome' in c or 'paciente' in c), None)
+            col_s_nome = next((c for c in df_s_consolidado.columns if 'nome paciente' in c or 'nome do paciente' in c or 'paciente' in c or 'nome' in c), None)
+            col_s_template = next((c for c in df_s_consolidado.columns if 'template' in c), None)
             
-            if col_s_atend and col_s_esp and col_s_nome:
+            if col_s_atend and col_s_nome and col_s_template:
                 df_s_consolidado[col_s_atend] = df_s_consolidado[col_s_atend].astype(str).str.strip()
-                df_s_consolidado[col_s_esp] = df_s_consolidado[col_s_esp].fillna('Outros').astype(str).str.strip()
-                df_s_consolidado['nome_limpo'] = df_s_consolidado[col_s_nome].astype(str).str.lower().str.strip()
+                df_s_consolidado['nome_paciente_p2'] = df_s_consolidado[col_s_nome].astype(str).str.lower().str.strip()
+                df_s_consolidado['template_p2'] = df_s_consolidado[col_s_template].fillna('').astype(str).str.upper().str.strip()
                 
-                # Criando um dataframe auxiliar limpando TO baseado na Planilha 3 para fins de exibição visual limpa
+                # Se a coluna especialidade existir, limpa para string, senão cria uma padrão
+                if col_s_esp:
+                    df_s_consolidado['especialidade_limpa'] = df_s_consolidado[col_s_esp].fillna('Outros').astype(str).str.strip()
+                else:
+                    df_s_consolidado['especialidade_limpa'] = 'Outros'
+
+                # Dataframe auxiliar para remover visualmente TO baseado na nova regra
                 df_s_visual = df_s_consolidado.copy()
                 
-                def limpar_to_visual(linha):
-                    esp = str(linha[col_s_esp]).lower()
-                    nome_p = str(linha['nome_limpo'])
-                    if ('to' in esp or 'terapia ocupacional' in esp) and (nome_p in nomes_resolvidos_to):
-                        return "RESOLVIDO_TO"
-                    return linha[col_s_esp]
-                
-                df_s_visual[col_s_esp] = df_s_visual.apply(limpar_to_visual, axis=1)
-                df_s_visual = df_s_visual[df_s_visual[col_s_esp] != "RESOLVIDO_TO"]
-
-                for _, linha in df_s_consolidado.iterrows():
-                    esp = str(linha[col_s_esp]).lower()
-                    atend = str(linha[col_s_atend])
-                    nome_p = str(linha['nome_limpo'])
-                    is_to = 'to' in esp or 'terapia ocupacional' in esp
+                def aplicar_nova_regra_validacao_to(linha):
+                    nome_p2 = str(linha['nome_paciente_p2'])
+                    template_p2 = str(linha['template_p2'])
                     
-                    if is_to:
-                        if nome_p in nomes_resolvidos_to: continue
-                        else: atendimentos_com_pendencia_to_estrita.add(atend)
-                    else:
+                    # Se o template na Planilha 2 contiver "TO"
+                    if "TO" in template_p2:
+                        # Verifica se o paciente existe na Planilha 3
+                        if nome_p2 in nomes_entregues_planilha3:
+                            return "RESOLVIDO_TO" # Relatório recebido -> Sem pendência
+                        else:
+                            return "TO (Pendência Ativa)" # Não encontrado -> Pendência permanece
+                    return "OUTRO"
+
+                df_s_consolidado['status_validacao_to'] = df_s_consolidado.apply(aplicar_nova_regra_validacao_to, axis=1)
+
+                # Processa os conjuntos de atendimentos bloqueados ou liberados
+                for _, linha in df_s_consolidado.iterrows():
+                    atend = str(linha[col_s_atend])
+                    status_to = str(linha['status_validacao_to'])
+                    esp = str(linha['especialidade_limpa']).upper()
+                    
+                    # Tratando a pendência de TO pela regra estrita solicitada
+                    if status_to == "TO (Pendência Ativa)":
+                        atendimentos_com_pendencia_to_estrita.add(atend)
+                    
+                    # Mapeia outras pendências que não sejam TO do fluxo tradicional
+                    if status_to == "OUTRO" and not ("TO" in esp or "TERAPIA OCUPACIONAL" in esp):
                         atendimentos_com_outras_pendencias.add(atend)
 
-                # Agrupamento visual purificado (Não exibe "Terapeuta Ocupacional" se ele estiver na Planilha 3)
-                setores_agrupados = df_s_visual.groupby(col_s_atend)[col_s_esp].apply(
+                # Limpeza do texto visual que vai aparecer na coluna do Dashboard
+                def ajustar_texto_especialidades_visual(linha):
+                    status_to = str(linha['status_validacao_to'])
+                    esp_original = str(linha['especialidade_limpa'])
+                    if status_to == "RESOLVIDO_TO":
+                        return "REMOVER"
+                    elif status_to == "TO (Pendência Ativa)":
+                        return "Terapia Ocupacional"
+                    return esp_original
+
+                df_s_visual['especialidade_exibicao'] = df_s_visual.apply(ajustar_texto_especialidades_visual, axis=1)
+                df_s_visual = df_s_visual[df_s_visual['especialidade_exibicao'] != "REMOVER"]
+
+                # Agrupa os setores limpos para bater com a tabela Amil
+                setores_agrupados = df_s_visual.groupby(col_s_atend)['especialidade_exibicao'].apply(
                     lambda x: ', '.join(sorted(set(x)))
                 ).reset_index()
                 setores_agrupados.columns = [col_atendimento, 'Especialidades Pendentes']
                 df = pd.merge(df, setores_agrupados, on=col_atendimento, how='left')
 
         df['Especialidades Pendentes'] = df['Especialidades Pendentes'].fillna('Nenhuma pendência técnica apontada')
-        # Limpeza para casos em que o paciente só tinha TO e ela foi zerada, mas o merge deixou em branco
         df.loc[df['Especialidades Pendentes'] == '', 'Especialidades Pendentes'] = 'Nenhuma pendência técnica apontada'
         
+        # Vinculação das flags finais de trava de fluxo
         df['Tem_Outra_Pendencia_Setor'] = df[col_atendimento].isin(atendimentos_com_outras_pendencias)
-        df['Tem_Pendencia_TO_Ativa'] = df[col_atendimento].isin(atendimentos_com_pendencia_to_estrita)
+        
+        def checar_to_bloqueante_final(linha):
+            atend = str(linha[col_atendimento])
+            nome_amil = str(linha['nome do paciente_limpo'])
+            # Dupla checagem: Se o nome estiver na P3, sob hipótese alguma gera pendência
+            if nome_amil in nomes_entregues_planilha3: 
+                return False
+            return atend in atendimentos_com_pendencia_to_estrita
+
+        df['Tem_Pendencia_TO_Ativa'] = df.apply(checar_to_bloqueante_final, axis=1)
         df['Tem_Pendencia_Setor'] = (df['Tem_Outra_Pendencia_Setor'] | df['Tem_Pendencia_TO_Ativa']) & (~df['É_Robo'])
 
         df['É_RioHome'] = df[col_contrato].str.lower().str.contains('riohome|rio home|rio_home', regex=True).fillna(False) if col_contrato else False
@@ -359,7 +399,7 @@ if arquivos_amil:
 
         with aba2:
             st.markdown("### 👤 Carga Operacional e Rastreabilidade de Inputs (Robô vs Manual)")
-            col_responsavel = 'pessoa resp aut'
+            col_responsavel = 'persona resp aut'
             if col_responsavel in df_producao_limpa.columns:
                 df_producao_limpa['Valor_ID'] = df_producao_limpa.apply(lambda r: r['valor_calculado'] if r['Is_ID'] else 0.0, axis=1)
                 df_producao_limpa['Valor_AD'] = df_producao_limpa.apply(lambda r: r['valor_calculado'] if r['Is_AD'] else 0.0, axis=1)
@@ -388,17 +428,11 @@ if arquivos_amil:
                 setores_alvo = ["FISIO", "FONO", "NUTRI", "TERAPIA OCUPACIONAL", "TO", "PSICO"]
                 nomes_exibicao = {"FISIO": "Fisioterapia", "FONO": "Fonoaudiologia", "NUTRI": "Nutrição", "TERAPIA OCUPACIONAL": "Terapia Ocupacional", "TO": "Terapia Ocupacional", "PSICO": "Psicologia"}
                 
-                col_s_esp_nome = next((c for c in df_s_consolidado.columns if 'grupo especialidade' in c or 'especialidade' in c), None)
-                if col_s_esp_nome:
-                    for setor in setores_alvo:
-                        atendimentos_do_setor = df_s_consolidado[df_s_consolidado[col_s_esp_nome].str.upper().str.contains(setor)][col_atendimento].unique() if col_atendimento in df_s_consolidado.columns else []
-                        sub_df_pacientes = df[df[col_atendimento].isin(atendimentos_do_setor)] if col_atendimento in df.columns else pd.DataFrame()
-                        if setor in ["TO", "TERAPIA OCUPACIONAL"] and not sub_df_pacientes.empty:
-                            sub_df_pacientes = sub_df_pacientes[sub_df_pacientes['Tem_Pendencia_TO_Ativa'] == True]
-                        
-                        valor_total_setor = sub_df_pacientes['valor_calculado'].sum() if not sub_df_pacientes.empty else 0.0
-                        if valor_total_setor > 0:
-                            lista_calculo_grafico.append({"Setor Técnico": nomes_exibicao[setor], "Valor Total Retido": valor_total_setor})
+                for setor in setores_alvo:
+                    sub_df_pacientes = df[df['Tem_Pendencia_TO_Ativa'] == True] if setor in ["TO", "TERAPIA OCUPACIONAL"] else df[df['Tem_Outra_Pendencia_Setor'] == True]
+                    valor_total_setor = sub_df_pacientes['valor_calculado'].sum() if not sub_df_pacientes.empty else 0.0
+                    if valor_total_setor > 0:
+                        lista_calculo_grafico.append({"Setor Técnico": nomes_exibicao[setor], "Valor Total Retido": valor_total_setor})
                 
                 if lista_calculo_grafico:
                     df_grafico = pd.DataFrame(lista_calculo_grafico).groupby("Setor Técnico")["Valor Total Retido"].sum().reset_index().sort_values(by="Valor Total Retido", ascending=False)
@@ -435,7 +469,7 @@ if arquivos_amil:
 
         with aba5:
             st.markdown("### 🚀 Pacientes Liberados (Sem Pendências nos Setores)")
-            if not arquivos_setores:
+            if not archivos_setores:
                 st.warning("⚠️ Para ver quem está liberado, carregue a planilha de Setores no campo de upload.")
             else:
                 st.markdown(f"**🔥 Total Prontos para Input: {len(df_liberados)} | Valor de Giro Rápido: R$ {df_liberados['valor_calculado'].sum():,.2f}**")
