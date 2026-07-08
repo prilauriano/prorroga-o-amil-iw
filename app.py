@@ -461,7 +461,7 @@ if arquivos_amil:
                 st.warning("⚠️ Para ver quem está liberado, carregue a planilha de Setores no campo de upload.")
             else:
                 st.markdown(f"**🔥 Total Prontos para Input: {len(df_liberados)} | Valor de Giro Rápido: R$ {df_liberados['valor_calculado'].sum():,.2f}**")
-                df_liberados_clean_excel = df_liberados[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'persona resp aut', 'valor_calculado']].copy()
+                df_liberados_clean_excel = df_liberados[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'pessoa resp aut', 'valor_calculado']].copy()
                 df_liberados_clean_excel.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo Atendimento', 'Responsável', 'Valor a Cobrar (R$)']
                 
                 buffer_liberados = io.BytesIO()
@@ -481,14 +481,14 @@ if arquivos_amil:
 
         with aba6:
             st.markdown("### 🏠 Listagem Isolada — Contrato RioHome")
-            df_riohome_view = df_riohome[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'persona resp aut', 'status aut orç', 'valor_calculado']].copy()
+            df_riohome_view = df_riohome[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'pessoa resp aut', 'status aut orç', 'valor_calculado']].copy()
             df_riohome_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Responsável', 'Status Atual IW', 'Valor a Cobrar (R$)']
             st.dataframe(df_riohome_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
         with aba7:
             st.markdown("### 🚨 Alertas de Erro: Arquivo Não Encontrado")
             if len(df_base_erros) > 0:
-                colunas_erro = [col_atendimento, 'id orçam.', 'nome do paciente', 'status aut orç', 'persona resp aut']
+                colunas_erro = [col_atendimento, 'id orçam.', 'nome do paciente', 'status aut orç', 'pessoa resp aut']
                 if col_status_rel: colunas_erro.insert(3, col_status_rel)
                 df_erro_print = df_base_erros[colunas_erro].copy()
                 colunas_visualizacao = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Status Aut Orç', 'Responsável']
