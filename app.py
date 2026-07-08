@@ -118,7 +118,7 @@ col_up1, col_up2, col_up3 = st.columns(3)
 with col_up1:
     arquivos_amil = st.file_uploader("1 - PRORROGAÇÃO (.csv/.xlsx)", type=["csv", "xlsx"], accept_multiple_files=True)
 with col_up2:
-    arquivos_setores = st.file_uploader("2 - RELATÓRIOS DAS ESPECILIDADES (Todas as Pendências)", type=["csv", "xlsx"], accept_multiple_files=True)
+    arquivos_setores = st.file_uploader("2 - RELATÓRIOS DAS ESPECIALIDADES (Todas as Pendências)", type=["csv", "xlsx"], accept_multiple_files=True)
 with col_up3:
     arquivos_to = st.file_uploader("3 - PACIENTES TO COM EVOLUÇÃO (Liberações de TO)", type=["csv", "xlsx"], accept_multiple_files=True)
 
@@ -201,11 +201,17 @@ if arquivos_amil:
 
         df['Inserido_Amil'] = df['nº guia solicitação (tiss)'].str.isnumeric() if 'nº guia solicitação (tiss)' in df.columns else False
 
+        # --- NOVA REGRA COGNITIVA PARA DETECÇÃO DE ORIGEM DO INPUT ---
         def verificar_origem_input(linha):
-            just_txt = str(linha[col_justificativa]).strip() if col_justificativa else ""
-            if "Operadora: Robo - Em analise" in just_txt: return "Robô"
-            elif "Operadora: Manual - Em analise" in just_txt: return "Manual"
+            just_txt = str(linha[col_justificativa]).lower().strip() if col_justificativa else ""
+            status_aut = str(linha['status aut orç']).lower().strip() if 'status aut orç' in df.columns else ""
+            
+            if "operadora: robo" in just_txt or "operadora: robô" in just_txt or "lib. para o robô" in status_aut or "lib. para o robo" in status_aut: 
+                return "Robô"
+            elif "operadora: manual" in just_txt: 
+                return "Manual"
             return "Outro"
+
         df['Origem_Input_Calculado'] = df.apply(verificar_origem_input, axis=1)
 
         def verificar_flag_robo_exata(linha):
@@ -283,10 +289,10 @@ if arquivos_amil:
 
                 df_s_consolidado['status_validacao_to'] = df_s_consolidado.apply(aplicar_nova_regra_validacao_to, axis=1)
 
-                for _, linha in df_s_consolidado.iterrows():
-                    atend = str(linha[col_s_atend])
-                    status_to = str(linha['status_validacao_to'])
-                    esp = str(linha['especialidade_limpa']).upper()
+                for _, text_linha in df_s_consolidado.iterrows():
+                    atend = str(text_linha[col_s_atend])
+                    status_to = str(text_linha['status_validacao_to'])
+                    esp = str(text_linha['especialidade_limpa']).upper()
                     
                     if status_to == "TO (Pendência Ativa)":
                         atendimentos_com_pendencia_to_estrita.add(atend)
@@ -350,8 +356,6 @@ if arquivos_amil:
         
         is_em_avaliacao = df_faturamento_geral_sem_robo['Status_Aut_Orc_Lower'] == 'em avaliação'
         is_em_branco = df_faturamento_geral_sem_robo['Status_Aut_Orc_Lower'] == ''
-        
-        # 🌟 REGRA ADICIONAL: Identifica se possui termos de "implantação" no status
         is_implantacao = df_faturamento_geral_sem_robo['Status_Aut_Orc_Lower'].str.contains('implantação|implantacao', na=False)
 
         # Filtragem da fila de Liberados para Input (Removendo em avaliação, em branco e termos de implantação)
@@ -359,7 +363,7 @@ if arquivos_amil:
             (df_faturamento_geral_sem_robo['Inserido_Amil'] == False) & 
             (~is_em_avaliacao) & 
             (~is_em_branco) & 
-            (~is_implantacao) & # 🌟 NOVA REGRA: Impede que implantações/pendentes apareçam nos liberados
+            (~is_implantacao) & 
             (df_faturamento_geral_sem_robo['Tem_Outra_Pendencia_Setor'] == False) &
             (df_faturamento_geral_sem_robo['Tem_Pendencia_TO_Ativa'] == False) &
             (~df_faturamento_geral_sem_robo['Status_Aut_Orc_Lower'].str.contains('prontuário|prontuario|ops pendente', na=False)) &
@@ -367,7 +371,7 @@ if arquivos_amil:
         ].copy()
         df_liberados = df_liberados.sort_values(by='valor_calculado', ascending=False)
 
-        # Filtragem de Prontuários Pendentes (Removendo "Em avaliação")
+        # Filtragem de Prontuários Pendentes (Removendo "Em avaliação" e em branco)
         df_prontuario = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['status aut orç'] == 'Prontuário Pendente') & 
             (~is_em_avaliacao) & 
@@ -375,7 +379,7 @@ if arquivos_amil:
             (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == True)
         ].sort_values(by='valor_calculado', ascending=False) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else pd.DataFrame()
         
-        # Filtragem de OPS Pendentes (Removendo "Em avaliação")
+        # Filtragem de OPS Pendentes (Removendo "Em avaliação" e em branco)
         df_ops = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['status aut orç'] == 'OPS Pendente') &
             (~is_em_avaliacao) &
