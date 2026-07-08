@@ -118,7 +118,7 @@ col_up1, col_up2, col_up3 = st.columns(3)
 with col_up1:
     arquivos_amil = st.file_uploader("1 - PRORROGAÇÃO (.csv/.xlsx)", type=["csv", "xlsx"], accept_multiple_files=True)
 with col_up2:
-    arquivos_setores = st.file_uploader("2 - RELATÓRIOS DAS ESPECILIDADES (Todas as Pendências)", type=["csv", "xlsx"], accept_multiple_files=True)
+    arquivos_setores = st.file_uploader("2 - RELATÓRIOS DAS ESPECIALIDADES (Todas as Pendências)", type=["csv", "xlsx"], accept_multiple_files=True)
 with col_up3:
     arquivos_to = st.file_uploader("3 - PACIENTES TO COM EVOLUÇÃO (Liberações de TO)", type=["csv", "xlsx"], accept_multiple_files=True)
 
@@ -345,21 +345,33 @@ if arquivos_amil:
         
         df_faturamento_geral_sem_robo = df_faturamento_geral[df_faturamento_geral['É_Robo'] == False].copy()
 
+        # 🌟 REGRA EXTRAÇÃO E NORMALIZAÇÃO DE STATUS "EM AVALIAÇÃO" 🌟
+        df_faturamento_geral_sem_robo['Status_Aut_Orc_Lower'] = df_faturamento_geral_sem_robo['status aut orç'].str.lower().str.strip() if 'status aut orç' in df_faturamento_geral_sem_robo.columns else ''
+        is_em_avaliacao = df_faturamento_geral_sem_robo['Status_Aut_Orc_Lower'] == 'em avaliação'
+
+        # Filtragem da fila de Liberados para Input (Removendo "Em avaliação")
         df_liberados = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['Inserido_Amil'] == False) & 
+            (~is_em_avaliacao) & 
             (df_faturamento_geral_sem_robo['Tem_Outra_Pendencia_Setor'] == False) &
             (df_faturamento_geral_sem_robo['Tem_Pendencia_TO_Ativa'] == False) &
-            (~df_faturamento_geral_sem_robo['status aut orç'].str.lower().str.contains('prontuário|prontuario|ops pendente', na=False)) &
+            (~df_faturamento_geral_sem_robo['Status_Aut_Orc_Lower'].str.contains('prontuário|prontuario|ops pendente', na=False)) &
             (~df_faturamento_geral_sem_robo[col_justificativa].str.lower().str.contains('operação pendente|operacao pendente', na=False) if col_justificativa else True)
         ].copy()
         df_liberados = df_liberados.sort_values(by='valor_calculado', ascending=False)
 
+        # Filtragem de Prontuários Pendentes (Removendo "Em avaliação")
         df_prontuario = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['status aut orç'] == 'Prontuário Pendente') & 
+            (~is_em_avaliacao) & 
             (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == True)
         ].sort_values(by='valor_calculado', ascending=False) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else pd.DataFrame()
         
-        df_ops = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['status aut orç'] == 'OPS Pendente'].sort_values(by='valor_calculado', ascending=False) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else pd.DataFrame()
+        # Filtragem de OPS Pendentes (Removendo "Em avaliação")
+        df_ops = df_faturamento_geral_sem_robo[
+            (df_faturamento_geral_sem_robo['status aut orç'] == 'OPS Pendente') &
+            (~is_em_avaliacao)
+        ].sort_values(by='valor_calculado', ascending=False) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else pd.DataFrame()
 
         # Métricas globais
         total_pacientes_iw = len(df)
