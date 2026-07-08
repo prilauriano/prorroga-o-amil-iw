@@ -282,7 +282,7 @@ if arquivos_amil:
                     if "NUTRI" in esp: return "Nutrição"
                     if "PSICO" in esp: return "Psicologia"
                     
-                    if "TERAPIA OCUPACIONAL" in esp or esp == "TO" or tmpl == "TO" or " TO " in f" {tmpl} ": 
+                    if "TERAPIA OCUPACIONAL" in esp or esp == "TO" or "TERAPEUTA" in esp or tmpl == "TO" or " TO " in f" {tmpl} ": 
                         return "Terapia Ocupacional"
                     
                     return esp.title()
@@ -311,11 +311,43 @@ if arquivos_amil:
                     elif status_to == "OUTRO" and setor != "Terapia Ocupacional":
                         atendimentos_com_outras_pendencias.add(atend)
 
-        # --- RE-ESTRUTURAÇÃO DAS REGRAS LOGICAS POR PACIENTE ---
+        # --- CONSTRUÇÃO DA STRING COM OS SETORES CORRETOS ---
         df['Tem_Outra_Pendencia_Setor'] = df[col_atendimento].isin(atendimentos_com_outras_pendencias)
         
-        # 🌟 AJUSTE CRÍTICO: A TO deixa de travar de forma exclusiva o paciente. O painel olha apenas para os OUTROS setores ativos.
-        df['Tem_Pendencia_Setor'] = df['Tem_Outra_Pendencia_Setor'] & (~df['É_Robo'])
+        def checar_to_bloqueante_final(linha):
+            atend = str(linha[col_atendimento])
+            nome_amil = str(linha['nome do paciente_limpo'])
+            if nome_amil in nomes_entregues_planilha3: 
+                return False
+            return atend in atendimentos_com_pendencia_to_estrita
+
+        df['Tem_Pendencia_TO_Ativa'] = df.apply(checar_to_bloqueante_final, axis=1)
+        
+        # O travamento de setor agora é inteligente: TO falsa/resolvida NÃO TRAVA o paciente de jeito nenhum!
+        df['Tem_Pendencia_Setor'] = (df['Tem_Outra_Pendencia_Setor'] | df['Tem_Pendencia_TO_Ativa']) & (~df['É_Robo'])
+
+        # Limpamos os setores repetidos ou falsos de TO e construímos a coluna correta para exibição
+        if arquivos_setores and not df_s_consolidado.empty:
+            df_s_ativos_reais = []
+            for _, idx_row in df_s_consolidado.iterrows():
+                atend_id = str(idx_row[col_s_atend])
+                setor_nome = str(idx_row['setor_normalizado'])
+                
+                if setor_nome == "Terapia Ocupacional" and atend_id in atendimentos_com_pendencia_to_estrita:
+                    df_s_ativos_reais.append(idx_row)
+                elif setor_nome != "Terapia Ocupacional" and atend_id in atendimentos_com_outras_pendencias:
+                    df_s_ativos_reais.append(idx_row)
+            
+            if df_s_ativos_reais:
+                df_s_ativos_df = pd.DataFrame(df_s_ativos_reais)
+                setores_agrupados = df_s_ativos_df.groupby(col_s_atend)['setor_normalizado'].apply(
+                    lambda x: ', '.join(sorted(set(x)))
+                ).reset_index()
+                setores_agrupados.columns = [col_atendimento, 'Especialidades Pendentes']
+                df = pd.merge(df, setores_agrupados, on=col_atendimento, how='left')
+
+        df['Especialidades Pendentes'] = df['Especialidades Pendentes'].fillna('Nenhuma pendência técnica apontada')
+        df.loc[df['Especialidades Pendentes'] == '', 'Especialidades Pendentes'] = 'Nenhuma pendência técnica apontada'
 
         df['É_RioHome'] = df[col_contrato].str.lower().str.contains('riohome|rio home|rio_home', regex=True).fillna(False) if col_contrato else False
         df_base_erros = df[df['Possui_Erro_Critico'] == True].copy()
@@ -333,7 +365,6 @@ if arquivos_amil:
         
         df_faturamento_geral_sem_robo = df_faturamento_geral[df_faturamento_geral['É_Robo'] == False].copy()
 
-        # Prontuário e OPS agora filtram olhando para a regra unificada (Garante que se tiver TO + outro setor, ele continue listado pelo outro setor)
         df_prontuario = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['status aut orç'] == 'Prontuário Pendente') & 
             (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == True)
@@ -401,7 +432,7 @@ if arquivos_amil:
         with aba4:
             st.markdown("### 📋 Lista de Pendências Ativas por Orçamento do Paciente")
             
-            # 📊 SINCRONIZAÇÃO COMPLETA: O gráfico agrupa valores apenas dos IDs visíveis nas planilhas abaixo
+            # 📊 SINCRONIZAÇÃO COMPLETA DO GRÁFICO COM AS PLANILHAS ABAIXO
             lista_atendimentos_visiveis = []
             if not df_prontuario.empty:
                 lista_atendimentos_visiveis.extend(df_prontuario[col_atendimento].tolist())
@@ -410,13 +441,19 @@ if arquivos_amil:
                 
             if arquivos_setores and len(lista_atendimentos_visiveis) > 0 and not df_s_consolidado.empty:
                 df_s_filtrado_grafico = df_s_consolidado[df_s_consolidado[col_s_atend].isin(lista_atendimentos_visiveis)].copy()
+                
+                # Só puxamos os setores que restaram ativos baseados nas regras estritas de filtragem
+                df_s_filtrado_grafico = df_s_filtrado_grafico[
+                    ((df_s_filtrado_grafico['setor_normalizado'] == "Terapia Ocupacional") & (df_s_filtrado_grafico[col_s_atend].isin(atendimentos_com_pendencia_to_estrita))) |
+                    ((df_s_filtrado_grafico['setor_normalizado'] != "Terapia Ocupacional") & (df_s_filtrado_grafico[col_s_atend].isin(atendimentos_com_outras_pendencias)))
+                ]
+                
                 df_valores_unicos = df[[col_atendimento, 'valor_calculado']].drop_duplicates()
                 df_grafico_final = pd.merge(df_s_filtrado_grafico, df_valores_unicos, left_on=col_s_atend, right_on=col_atendimento, how='inner')
-                
                 df_grafico_final = df_grafico_final.drop_duplicates(subset=[col_s_atend, 'setor_normalizado'])
+                
                 df_grafico_pizza = df_grafico_final.groupby('setor_normalizado')['valor_calculado'].sum().reset_index()
                 df_grafico_pizza.columns = ['Setor Técnico', 'Valor Total Retido']
-                df_grafico_pizza = df_grafico_pizza[df_grafico_pizza['Setor Técnico'] != "Terapia Ocupacional"] # Remove TO do gráfico de forma absoluta
                 df_grafico_pizza = df_grafico_pizza[df_grafico_pizza['Valor Total Retido'] > 0].sort_values(by="Valor Total Retido", ascending=False)
                 
                 if not df_grafico_pizza.empty:
@@ -429,9 +466,9 @@ if arquivos_amil:
             with tab_p:
                 if not df_prontuario.empty:
                     st.markdown(f"**Total de Processos: {len(df_prontuario)} | Montante: R$ {df_prontuario['valor_calculado'].sum():,.2f}**")
-                    # 🔒 TRAVADO: Mantendo estritamente as colunas de identificação e o Responsável
-                    df_p_view = df_prontuario[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', col_responsavel, 'valor_calculado']].copy()
-                    df_p_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Responsável', 'Valor do Paciente (R$)']
+                    # Colunas totalmente restauradas: Setores Pendentes e Responsável ativos e intocados!
+                    df_p_view = df_prontuario[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', col_responsavel, 'valor_calculado']].copy()
+                    df_p_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor do Paciente (R$)']
                     
                     buffer_p = io.BytesIO()
                     with pd.ExcelWriter(buffer_p, engine='xlsxwriter') as writer:
@@ -443,9 +480,9 @@ if arquivos_amil:
             with tab_o:
                 if not df_ops.empty:
                     st.markdown(f"**Total de Processos: {len(df_ops)} | Montante: R$ {df_ops['valor_calculado'].sum():,.2f}**")
-                    # 🔒 TRAVADO: Mantendo estritamente as colunas de identificação e o Responsável
-                    df_o_view = df_ops[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', col_responsavel, 'valor_calculado']].copy()
-                    df_o_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Responsável', 'Valor do Paciente (R$)']
+                    # Colunas totalmente restauradas: Setores Pendentes e Responsável ativos e intocados!
+                    df_o_view = df_ops[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'Especialidades Pendentes', col_responsavel, 'valor_calculado']].copy()
+                    df_o_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Setores Pendentes', 'Responsável', 'Valor do Paciente (R$)']
                     
                     buffer_o = io.BytesIO()
                     with pd.ExcelWriter(buffer_o, engine='xlsxwriter') as writer:
