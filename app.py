@@ -272,20 +272,23 @@ if arquivos_amil:
                 else:
                     df_s_consolidado['especialidade_limpa'] = 'Outros'
 
-                def normalizar_nome_setor(nome):
-                    n = str(nome).strip().upper()
-                    if "MEDIC" in n or "MEDIQ" in n: return "Médico"
-                    if "FISIO" in n: return "Fisioterapia"
-                    if "FONO" in n: return "Fonoaudiologia"
-                    if "NUTRI" in n: return "Nutrição"
-                    if "TERAPIA OCUPACIONAL" in n or "TO" == n: return "Terapia Ocupacional"
-                    if "PSICO" in n: return "Psicologia"
-                    return str(nome).strip().title()
+                def normalizar_nome_setor(linha):
+                    esp = str(linha['especialidade_limpa']).strip().upper()
+                    tmpl = str(linha['template_p2'])
+                    
+                    if "MEDIC" in esp or "MEDIQ" in esp: return "Médico"
+                    if "FISIO" in esp: return "Fisioterapia"
+                    if "FONO" in esp: return "Fonoaudiologia"
+                    if "NUTRI" in esp: return "Nutrição"
+                    if "PSICO" in esp: return "Psicologia"
+                    
+                    # Validação cirúrgica para TO: evita capturar pedaços de palavras
+                    if "TERAPIA OCUPACIONAL" in esp or esp == "TO" or tmpl == "TO" or " TO " in f" {tmpl} ": 
+                        return "Terapia Ocupacional"
+                    
+                    return esp.title()
 
-                df_s_consolidado['setor_normalizado'] = df_s_consolidado['especialidade_limpa'].apply(normalizar_nome_setor)
-                
-                # Força a marcação como Terapia Ocupacional se o template contiver "TO"
-                df_s_consolidado.loc[df_s_consolidado['template_p2'].str.contains('TO'), 'setor_normalizado'] = 'Terapia Ocupacional'
+                df_s_consolidado['setor_normalizado'] = df_s_consolidado.apply(normalizar_nome_setor, axis=1)
 
                 def aplicar_nova_regra_validacao_to(linha):
                     nome_p2 = str(linha['nome_paciente_p2'])
@@ -359,6 +362,7 @@ if arquivos_amil:
         df_riohome = df_producao_limpa[df_producao_limpa['É_RioHome'] == True].copy()
         df_faturamento_geral = df_producao_limpa[df_producao_limpa['É_RioHome'] == False].copy()
 
+        # Fila do robô ignora implantação/operação
         df_fila_robo = df_faturamento_geral[
             (df_faturamento_geral['É_Robo'] == True) & 
             (df_faturamento_geral['Inserido_Amil'] == False) &
@@ -378,10 +382,13 @@ if arquivos_amil:
             (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == True)
         ].sort_values(by='valor_calculado', ascending=False) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else pd.DataFrame()
 
+        # 🚨 CORREÇÃO CRÍTICA: Bloqueia estritamente os status de Implantação e Operação de entrarem na lista de liberados!
         df_liberados = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['Inserido_Amil'] == False) & 
             (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == False) &
-            (~df_faturamento_geral_sem_robo['status aut orç'].str.lower().str.strip().isin(['em avaliação', '', 'implantação', 'implantacao', 'operação', 'operacao']))
+            (~df_faturamento_geral_sem_robo['status aut orç'].str.lower().str.strip().isin([
+                'em avaliação', '', 'implantação', 'implantacao', 'operação', 'operacao'
+            ]))
         ].copy().sort_values(by='valor_calculado', ascending=False)
 
         # Métricas globais
@@ -466,7 +473,7 @@ if arquivos_amil:
                     
                     buffer_o = io.BytesIO()
                     with pd.ExcelWriter(buffer_o, engine='xlsxwriter') as writer:
-                        df_o_excel = df_o_view.copy()
+                        df_o_view.to_excel(writer, sheet_name='OPS Pendente', index=False)
                     st.download_button(label="📥 Baixar Planilha Estruturada: Pendências da Operação", data=buffer_o.getvalue(), file_name="ops_pendente_estruturado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                     st.dataframe(df_o_view.style.format({'Valor do Paciente (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
                 else: st.info("Nenhuma pendência de OPS activa.")
