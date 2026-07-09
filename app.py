@@ -2,10 +2,13 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import io
+import unicodedata
 from datetime import datetime
+
 
 # 1. Configuração de página
 st.set_page_config(page_title="Dashboard Prorrogações | Solar Cuidados", page_icon="☀️", layout="wide")
+
 
 # Inicialização do Histórico em Sessão (Persistência em memória na navegação do Streamlit)
 if 'historico_coletas_df' not in st.session_state:
@@ -13,11 +16,13 @@ if 'historico_coletas_df' not in st.session_state:
         "Data", "Hora", "Ciclo", "Total da Base", "Pendentes", "Robô", "Manual", "Valor Pendente", "Percentual de Conclusão"
     ])
 
+
 # Parâmetros Padrão de Configuração de Metas (Caso o usuário queira customizar na interface)
 if 'meta_conclusao' not in st.session_state: st.session_state.meta_conclusao = 85.0
 if 'meta_pendencias' not in st.session_state: st.session_state.meta_pendencias = 50
 if 'meta_automacao' not in st.session_state: st.session_state.meta_automacao = 60.0
 if 'meta_valor' not in st.session_state: st.session_state.meta_valor = 500000.0
+
 
 # 2. Injeção da Paleta de Cores Exata (Bordô, Dourado e Off-White)
 st.markdown("""
@@ -136,6 +141,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+
 # Cabeçalho Oficial
 st.markdown("""
     <div class="topbar-header">
@@ -145,6 +151,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 st.markdown('<p class="subtitle">Módulo operacional integrado de auditoria Amil IW, monitoramento de prazos, volumetria ID/AD e controle de pendências técnicas por paciente.</p>', unsafe_allow_html=True)
 
+
 # --- ÁREA DE UPLOAD ---
 col_up1, col_up2, col_up3 = st.columns(3)
 with col_up1:
@@ -153,6 +160,7 @@ with col_up2:
     arquivos_setores = st.file_uploader("2 - RELATÓRIOS DAS ESPECIALIDADES (Todas as Pendências)", type=["csv", "xlsx"], accept_multiple_files=True)
 with col_up3:
     arquivos_to = st.file_uploader("3 - PACIENTES TO COM EVOLUÇÃO (Liberações de TO)", type=["csv", "xlsx"], accept_multiple_files=True)
+
 
 if arquivos_amil:
     try:
@@ -388,11 +396,8 @@ if arquivos_amil:
                 
                 df = pd.merge(df, setores_agrupados, on=col_atendimento, how='left')
 
-        if 'Especialidades Pendentes' not in df.columns:
-            df['Especialidades Pendentes'] = 'Nenhuma pendência técnica apontada'
-        else:
-            df['Especialidades Pendentes'] = df['Especialidades Pendentes'].fillna('Nenhuma pendência técnica apontada')
-            df.loc[df['Especialidades Pendentes'] == '', 'Especialidades Pendentes'] = 'Nenhuma pendência técnica apontada'
+        df['Especialidades Pendentes'] = df['Especialidades Pendentes'].fillna('Nenhuma pendência técnica apontada')
+        df.loc[df['Especialidades Pendentes'] == '', 'Especialidades Pendentes'] = 'Nenhuma pendência técnica apontada'
 
         df['É_RioHome'] = df[col_contrato].str.lower().str.contains('riohome|rio home|rio_home', regex=True).fillna(False) if col_contrato else False
         df_base_erros = df[df['Possui_Erro_Critico'] == True].copy()
@@ -423,19 +428,27 @@ if arquivos_amil:
             (df_faturamento_geral_sem_robo['Especialidades Pendentes'] != 'Nenhuma pendência técnica apontada')
         ].sort_values(by='valor_calculado', ascending=False) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else pd.DataFrame()
 
+        # --- Normalização auxiliar (sem acento e minúscula) para comparações robustas de texto ---
+        def normalizar_texto_sem_acento(texto):
+            texto = str(texto) if not pd.isna(texto) else ''
+            texto = texto.strip().lower()
+            texto = unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8')
+            return texto
+
+        def contem_status_excluido_liberados(status):
+            texto_norm = normalizar_texto_sem_acento(status)
+            if texto_norm == '':
+                return True
+            termos_excluidos = ['em avaliacao', 'implantacao', 'operados']
+            return any(termo in texto_norm for termo in termos_excluidos)
+
+        df_faturamento_geral_sem_robo['_status_excluido_liberados'] = df_faturamento_geral_sem_robo['status aut orç'].apply(contem_status_excluido_liberados) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else False
+
         df_liberados = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['Inserido_Amil'] == False) & 
             ((df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == False) | (df_faturamento_geral_sem_robo['Especialidades Pendentes'] == 'Nenhuma pendência técnica apontada')) &
-            (~df_faturamento_geral_sem_robo['status aut orç'].str.lower().str.strip().isin([
-                'em avaliação', '', 'implantação', 'implantacao', 'operação', 'operacao'
-            ]))
+            (~df_faturamento_geral_sem_robo['_status_excluido_liberados'])
         ].copy().sort_values(by='valor_calculado', ascending=False)
-
-        # Regra 7: Excluir da planilha Liberados para imput registros de avaliação, implantação ou operados
-        if col_justificativa in df_liberados.columns:
-            justificativa_limpa = df_liberados[col_justificativa].fillna('').str.normalize('NFKD').str.encode('ascii', errors='ignore').str.decode('utf-8').str.lower()
-            mascara_remover = justificativa_limpa.str.contains('em avaliacao|implantacao|operados', regex=True)
-            df_liberados = df_liberados[~mascara_remover].copy()
 
         # Métricas globais
         total_pacientes_iw = len(df)
@@ -910,18 +923,19 @@ if arquivos_amil:
                 st.warning("⚠️ Para ver quem está liberado, carregue a planilha de Setores no campo de upload.")
             else:
                 st.markdown(f"**🔥 Total Prontos para Input: {len(df_liberados)} | Valor de Giro Rápido: R$ {df_liberados['valor_calculado'].sum():,.2f}**")
-                
-                # Regras 1, 2, 3 e 4: Inserindo 'Justificativa Pendência' ao lado de 'Tipo Atendimento'
+
+                # Campo "Justificativa Pendência": exibição informativa exclusiva desta planilha,
+                # copiado integralmente da coluna do IW, sem alterações, resumos ou interpretações.
                 colunas_liberados = [col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento']
                 nomes_colunas_liberados = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo Atendimento']
-                
+
                 if col_justificativa in df_liberados.columns:
                     colunas_liberados.append(col_justificativa)
                     nomes_colunas_liberados.append('Justificativa Pendência')
-                    
+
                 colunas_liberados.extend([col_responsavel, 'valor_calculado'])
                 nomes_colunas_liberados.extend(['Responsável', 'Valor a Cobrar (R$)'])
-                
+
                 df_liberados_clean_excel = df_liberados[colunas_liberados].copy()
                 df_liberados_clean_excel.columns = nomes_colunas_liberados
                 
