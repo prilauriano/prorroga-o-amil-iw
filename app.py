@@ -437,7 +437,7 @@ if arquivos_amil:
 
         def contem_termo_excluido_liberados(texto):
             texto_norm = normalizar_texto_sem_acento(texto)
-            termos_excluidos = ['em avaliacao', 'implantacao', 'operacao']
+            termos_excluidos = ['em avaliacao', 'implantacao', 'operacao', 'operadora pendente']
             return any(termo in texto_norm for termo in termos_excluidos)
 
         # Status vazio ou contendo um dos termos excluídos (comportamento original preservado)
