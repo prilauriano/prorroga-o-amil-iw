@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import io
+from datetime import datetime
 
 # 1. Configuração de página
 st.set_page_config(page_title="Dashboard Prorrogações | Solar Cuidados", page_icon="☀️", layout="wide")
@@ -414,6 +415,73 @@ if arquivos_amil:
             card4.metric("🤖 Fila do Robô (Filtro Exato)", f"{len(df_fila_robo)}")
             card5.metric("VALOR TOTAL DE PACIENTES", f"R$ {valor_total_todos_pacientes:,.2f}")
             card6.metric("VALOR TOTAL EM PENDÊNCIA TÉCNICA", f"R$ {valor_total_pendencias_setores:,.2f}")
+            
+            st.markdown("---")
+            st.markdown("### 🗓️ Histórico de Coletas")
+            ciclo_opcao = st.selectbox("Selecione o Ciclo de Prorrogação Atual:", ["Ciclo 1", "Ciclo 2", "Ciclo 3", "Extraordinário"])
+            
+            if st.button("📊 Gerar Resumo para Histórico", key="btn_historico"):
+                # Captura das variáveis temporais e volumétricas existentes
+                data_atual = datetime.now().strftime("%d/%m/%Y")
+                hora_atual = datetime.now().strftime("%H:%M:%S")
+                
+                # Coleta dos contadores e de produtividade mapeados na Aba 2
+                cont_colaboradores = 0
+                inputs_robo_total = 0
+                inputs_manual_total = 0
+                if col_responsavel in df.columns:
+                    colab_filtrados = [c for c in df[col_responsavel].unique() if str(c).strip() != '' and not any(exc in str(c).upper() for exc in ["IMPLANTAÇÃO", "IMPLANTACAO", "PRORROGAÇÃO", "PRORROGACAO", "OPERAÇÃO", "OPERACAO"])]
+                    cont_colaboradores = len(colab_filtrados)
+                
+                if col_justificativa in df.columns:
+                    inputs_robo_total = (df[col_justificativa].fillna('').str.strip() == "Operadora: Robô - Em analise").sum()
+                    inputs_manual_total = (df[col_justificativa].fillna('').str.strip() == "Operadora: Manual - Em analise").sum()
+                
+                # Volumetria de atendimento
+                total_ad = df['Is_AD'].sum()
+                total_id = df['Is_ID'].sum()
+                
+                # Cálculos de performance e percentuais de conclusão requeridos
+                pct_conclusao = (inseridos_count / total_pacientes_iw * 100) if total_pacientes_iw > 0 else 0.0
+                pct_robo = (inputs_robo_total / total_pacientes_iw * 100) if total_pacientes_iw > 0 else 0.0
+                pct_manual = (inputs_manual_total / total_pacientes_iw * 100) if total_pacientes_iw > 0 else 0.0
+                
+                # Criação do dicionário estruturado para linha única
+                dados_historico = {
+                    "Data da Coleta": data_atual,
+                    "Hora da Coleta": hora_atual,
+                    "Ciclo de Prorrogação": ciclo_opcao,
+                    "Total Pacientes Base": total_pacientes_iw,
+                    "Quantidade Pendentes": total_pendentes_input_real,
+                    "Imputs por Robô": inputs_robo_total,
+                    "Imputs Manuais": inputs_manual_total,
+                    "Total Pacientes AD": total_ad,
+                    "Total Pacientes ID": total_id,
+                    "Valor Total Base": round(valor_total_todos_pacientes, 2),
+                    "Valor Total Pendente": round(valor_total_pendencias_setores, 2),
+                    "Quantidade Colaboradores": cont_colaboradores,
+                    "Percentual Conclusão Base (%)": round(pct_conclusao, 2),
+                    "Percentual Realizado Robô (%)": round(pct_robo, 2),
+                    "Percentual Realizado Manual (%)": round(pct_manual, 2)
+                }
+                
+                df_linha_historico = pd.DataFrame([dados_historico])
+                
+                st.success("✨ Linha de histórico gerada com sucesso! Você pode copiá-la diretamente na tabela abaixo ou exportar o arquivo.")
+                
+                # Visualização em DataFrame para cópia rápida com um clique
+                st.dataframe(df_linha_historico, use_container_width=True, hide_index=True)
+                
+                # Geração do CSV formatado para o ecossistema Google Sheets brasileiro (separador ponto e vírgula)
+                csv_buffer = io.StringIO()
+                df_linha_historico.to_csv(csv_buffer, index=False, sep=';', encoding='utf-8-sig')
+                
+                st.download_button(
+                    label="📥 Baixar Linha como CSV (Google Sheets)",
+                    data=csv_buffer.getvalue(),
+                    file_name=f"linha_historico_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv"
+                )
 
         with aba2:
             st.markdown("### 👤 Relatório Analítico de Produtividade da Equipe")
