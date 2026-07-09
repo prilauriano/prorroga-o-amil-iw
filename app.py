@@ -337,7 +337,7 @@ if arquivos_amil:
                 
                 if setor_nome == "Terapia Ocupacional" and atend_id in atendimentos_com_pendencia_to_estrita:
                     df_s_ativos_reais.append(idx_row)
-                elif sector_nome != "Terapia Ocupacional" and atend_id in atendimentos_com_outras_pendencias:
+                elif setor_nome != "Terapia Ocupacional" and atend_id in atendimentos_com_outras_pendencias:
                     df_s_ativos_reais.append(idx_row)
             
             if df_s_ativos_reais:
