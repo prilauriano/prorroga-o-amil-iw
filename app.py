@@ -7,6 +7,23 @@ from datetime import datetime
 # 1. Configuração de página
 st.set_page_config(page_title="Dashboard Prorrogações | Solar Cuidados", page_icon="☀️", layout="wide")
 
+# Inicialização do Histórico com Carregamento Automático do Arquivo Excel Permanente
+if 'historico_coletas_df' not in st.session_state:
+    try:
+        # Tenta carregar o histórico permanente existente
+        st.session_state.historico_coletas_df = pd.read_excel("historico_prorrogacoes.xlsx")
+    except:
+        # Caso o arquivo ainda não exista, cria a estrutura padrão vazia
+        st.session_state.historico_coletas_df = pd.DataFrame(columns=[
+            "Data", "Hora", "Ciclo", "Total da Base", "Pendentes", "Robô", "Manual", "Valor Pendente", "Percentual de Conclusão"
+        ])
+
+# Parâmetros Padrão de Configuração de Metas (Caso o usuário queira customizar na interface)
+if 'meta_conclusao' not in st.session_state: st.session_state.meta_conclusao = 85.0
+if 'meta_pendencias' not in st.session_state: st.session_state.meta_pendencias = 50
+if 'meta_automacao' not in st.session_state: st.session_state.meta_automacao = 60.0
+if 'meta_valor' not in st.session_state: st.session_state.meta_valor = 500000.0
+
 # 2. Injeção da Paleta de Cores Exata (Bordô, Dourado e Off-White)
 st.markdown("""
     <style>
@@ -93,7 +110,7 @@ st.markdown("""
     div[data-testid="stMetricValue"] {
         color: #1A1714 !important;
         font-weight: 800 !important;
-        font-size: 26px !important;
+        font-size: 24px !important;
         letter-spacing: -1px;
     }
     
@@ -101,6 +118,25 @@ st.markdown("""
         background-color: #FFFFFF !important;
         border: 1px solid #E2DDD6 !important;
         border-radius: 12px !important;
+    }
+    
+    /* Box do Semáforo Inteligente */
+    .semaforo-card {
+        padding: 20px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        border: 1px solid #E2DDD6;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    }
+    
+    /* Box de Insights */
+    .insight-card {
+        background-color: #FFFFFF;
+        border-left: 5px solid #5C1220;
+        padding: 15px 20px;
+        border-radius: 4px 12px 12px 4px;
+        margin-bottom: 12px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.03);
     }
     </style>
 """, unsafe_allow_html=True)
@@ -149,7 +185,12 @@ if arquivos_amil:
         col_classificacao = next((col for col in df.columns if 'classific. atendimento' in col or 'classific.' in col or 'classificacao' in col), 'classific. atendimento')
         
         # FIXAÇÃO EXATA DA COLUNA DE RESPONSÁVEL DO IW
-        col_responsavel = 'pessoa resp aut'
+        col_responsavel = 'persona resp aut' if 'persona resp aut' in df.columns else ('pessoa resp aut' if 'pessoa resp aut' in df.columns else 'responsavel')
+        if col_responsavel not in df.columns and 'pessoa resp aut' in df.columns:
+            col_responsavel = 'pessoa resp aut'
+        elif col_responsavel not in df.columns:
+            col_responsavel = 'pessoa resp aut'
+            df[col_responsavel] = ''
         
         campos_obrigatorios = ['nº guia solicitação (tiss)', 'senha aprovação', 'status aut orç', 'nr. matricula', col_responsavel, col_classificacao, 'nome do paciente', 'id orçam.']
         if col_justificativa in df.columns: campos_obrigatorios.append(col_justificativa)
@@ -250,7 +291,7 @@ if arquivos_amil:
         atendimentos_com_pendencia_to_estrita = set()
         df_s_consolidado = pd.DataFrame()
         
-        if arquivos_setores:
+        if archivos_setores:
             lista_dfs_setores = []
             for arq_s in arquivos_setores:
                 if arq_s.name.endswith('.csv'):
@@ -398,90 +439,363 @@ if arquivos_amil:
         valor_total_todos_pacientes = df['valor_calculado'].sum()
         valor_total_pendencias_setores = df[df['Tem_Pendencia_Setor'] == True]['valor_calculado'].sum()
         total_pendentes_input_real = (df['Inserido_Amil'] == False).sum()
+        
+        # Volumetria do Robô baseada nas marcas internas do arquivo
+        inputs_robo_total = 0
+        inputs_manual_total = 0
+        if col_justificativa in df.columns:
+            inputs_robo_total = (df[col_justificativa].fillna('').str.strip() == "Operadora: Robô - Em analise").sum()
+            inputs_manual_total = (df[col_justificativa].fillna('').str.strip() == "Operadora: Manual - Em analise").sum()
+        total_inputs_calculados = inputs_robo_total + inputs_manual_total
+
+        # --- CONFIGURAÇÃO LATERAL DE METAS (REQUISITO 14) ---
+        with st.sidebar:
+            st.markdown("### ⚙️ Configuração de Metas")
+            st.session_state.meta_conclusao = st.number_input("Meta de Conclusão (%)", min_value=0.0, max_value=100.0, value=st.session_state.meta_conclusao)
+            st.session_state.meta_pendencias = st.number_input("Meta Máxima de Pendências (Pacientes)", min_value=0, value=st.session_state.meta_pendencias)
+            st.session_state.meta_automacao = st.number_input("Meta de Automação (%)", min_value=0.0, max_value=100.0, value=st.session_state.meta_automacao)
+            st.session_state.meta_valor = st.number_input("Meta Máxima de Valor Pendente (R$)", min_value=0.0, value=st.session_state.meta_valor)
+            horario_previsto = st.text_input("Horário previsto para conclusão", value="18:00")
 
         # --- ABAS DO DASHBOARD ---
         aba1, aba2, aba3, aba4, aba5, aba_r, aba6, aba7 = st.tabs([
-            "☀️ Resumo Geral", "👤 Gestão de Equipe", "🏥 Segmentação ID / AD", 
+            "☀️ Histórico de Coletas & Produtividade", "👤 Gestão de Equipe", "🏥 Segmentação ID / AD", 
             "📋 Lista de Pendências", "🚀 Liberados para Input", "🤖 Liberados para o Robô",
             "🏠 Contrato RioHome (Manual)", "🚨 Alertas de Erro"
         ])
         
         with aba1:
-            st.markdown("### 📌 Indicadores Operacionais e Financeiros Estruturados")
-            card1, card2, card3, card4, card5, card6 = st.columns(6)
-            card1.metric("Total Base Bruta IW", f"{total_pacientes_iw}")
-            card2.metric("✅ Inseridos (Com Guia TISS)", f"{inseridos_count}")
-            card3.metric("🚀 Pendentes para Input", f"{total_pendentes_input_real}")
-            card4.metric("🤖 Fila do Robô (Filtro Exato)", f"{len(df_fila_robo)}")
-            card5.metric("VALOR TOTAL DE PACIENTES", f"R$ {valor_total_todos_pacientes:,.2f}")
-            card6.metric("VALOR TOTAL EM PENDÊNCIA TÉCNICA", f"R$ {valor_total_pendencias_setores:,.2f}")
+            # --- 14. SEMÁFORO INTELIGENTE (RENDERIZADO NO TOPO) ---
+            pct_conclusao_atual = (inseridos_count / total_pacientes_iw * 100) if total_pacientes_iw > 0 else 0.0
+            pct_automacao_atual = (inputs_robo_total / total_inputs_calculados * 100) if total_inputs_calculados > 0 else 0.0
             
+            # Lógica de Classificação das Cores do Alerta
+            motivos_alerta = []
+            if pct_conclusao_atual < st.session_state.meta_conclusao: motivos_alerta.append("Conclusão abaixo da meta")
+            if total_pendentes_input_real > st.session_state.meta_pendencias: motivos_alerta.append("Volume de pendências acima do limite")
+            if valor_total_pendencias_setores > st.session_state.meta_valor: motivos_alerta.append("Valor financeiro retido crítico")
+            
+            if len(motivos_alerta) == 0:
+                cor_semaforo = "#D4EDDA"
+                borda_semaforo = "#28A745"
+                texto_cor = "#155724"
+                status_titulo = "🟢 VERDE — Operação dentro das metas"
+                status_mensagem = "A prorrogação está evoluindo conforme o esperado."
+            elif len(motivos_alerta) <= 2:
+                cor_semaforo = "#FFF3CD"
+                borda_semaforo = "#FFC107"
+                texto_cor = "#856404"
+                status_titulo = "🟡 AMARELO — Operação requer atenção"
+                status_mensagem = f"Alguns indicadores encontram-se abaixo da meta: {', '.join(motivos_alerta)}."
+            else:
+                cor_semaforo = "#F8D7DA"
+                borda_semaforo = "#DC3545"
+                texto_cor = "#721C24"
+                status_titulo = "🔴 VERMELHO — Operação crítica"
+                status_mensagem = "Recomenda-se atuação imediata da equipe! Multiplos gargalos de retenção técnica ativos."
+                
+            # Determinação da Tendência Baseada no Histórico de Sessão
+            tendencia_txt = "➡️ Estável"
+            if len(st.session_state.historico_coletas_df) >= 2:
+                ultimo_p = st.session_state.historico_coletas_df.iloc[-1]["Pendentes"]
+                penultimo_p = st.session_state.historico_coletas_df.iloc[-2]["Pendentes"]
+                if ultimo_p < penultimo_p: tendencia_txt = "📈 Melhorando (Reduzindo bloqueos)"
+                elif ultimo_p > penultimo_p: tendencia_txt = "📉 Piorando (Acúmulo de travas)"
+
+            st.markdown(f"""
+                <div class="semaforo-card" style="background-color: {cor_semaforo}; border-left: 8px solid {borda_semaforo}; color: {texto_cor};">
+                    <h4 style='margin:0 0 5px 0; font-weight:800;'>🚦 Situação da Operação: {status_titulo}</h4>
+                    <p style='margin:0 0 8px 0; font-size:14px;'>{status_mensagem}</p>
+                    <small><b>Tendência Geral Calculada:</b> {tendencia_txt} | <b>Horário Alvo:</b> {horario_previsto}</small>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            # --- 1. CARDS DE INDICADORES ---
+            st.markdown("### 📌 Indicadores Estruturados da Coleta Ativa")
+            card1, card2, card3, card4, card5 = st.columns(5)
+            card1.metric("Total de Pacientes", f"{total_pacientes_iw}")
+            card2.metric("Quantidade de Pendentes", f"{total_pendentes_input_real}")
+            card3.metric("Percentual de Conclusão", f"{pct_conclusao_atual:.2f}%")
+            card4.metric("Valor Total Pendente", f"R$ {valor_total_pendencias_setores:,.2f}")
+            
+            # Contagem dinâmica de colaboradores qualificados
+            cont_colaboradores_cards = 0
+            if col_responsavel in df.columns:
+                colab_filtrados_cards = [c for c in df[col_responsavel].unique() if str(c).strip() != '' and not any(exc in str(c).upper() for exc in ["IMPLANTAÇÃO", "IMPLANTACAO", "PRORROGAÇÃO", "PRORROGACAO", "OPERAÇÃO", "OPERACAO"])]
+                cont_colaboradores_cards = len(colab_filtrados_cards)
+            card5.metric("Quantidade de Colaboradores", f"{cont_colaboradores_cards}")
+            
+            card6, card7, card8, card9, card10 = st.columns(5)
+            card6.metric("Total Pacientes AD", f"{df['Is_AD'].sum()}")
+            card7.metric("Total Pacientes ID", f"{df['Is_ID'].sum()}")
+            card8.metric("Imputs pelo Robô", f"{inputs_robo_total}")
+            card9.metric("Imputs Manualmente", f"{inputs_manual_total}")
+            card10.metric("Última Atualização", datetime.now().strftime("%d/%m/%Y %H:%M"))
+            
+            # --- BOTÃO DE GERAÇÃO PARA O HISTÓRICO ---
             st.markdown("---")
-            st.markdown("### 🗓️ Histórico de Coletas")
-            ciclo_opcao = st.selectbox("Selecione o Ciclo de Prorrogação Atual:", ["Ciclo 1", "Ciclo 2", "Ciclo 3", "Extraordinário"])
+            ciclo_opcao = st.selectbox("Selecione o Ciclo de Prorrogação para o Registro Histórico:", ["Ciclo 1", "Ciclo 2", "Ciclo 3", "Extraordinário"])
             
-            if st.button("📊 Gerar Resumo para Histórico", key="btn_historico"):
-                # Captura das variáveis temporais e volumétricas existentes
+            if st.button("📊 Gerar Resumo para Histórico", key="btn_historico_avancado"):
                 data_atual = datetime.now().strftime("%d/%m/%Y")
                 hora_atual = datetime.now().strftime("%H:%M:%S")
                 
-                # Coleta dos contadores e de produtividade mapeados na Aba 2
-                cont_colaboradores = 0
-                inputs_robo_total = 0
-                inputs_manual_total = 0
-                if col_responsavel in df.columns:
-                    colab_filtrados = [c for c in df[col_responsavel].unique() if str(c).strip() != '' and not any(exc in str(c).upper() for exc in ["IMPLANTAÇÃO", "IMPLANTACAO", "PRORROGAÇÃO", "PRORROGACAO", "OPERAÇÃO", "OPERACAO"])]
-                    cont_colaboradores = len(colab_filtrados)
-                
-                if col_justificativa in df.columns:
-                    inputs_robo_total = (df[col_justificativa].fillna('').str.strip() == "Operadora: Robô - Em analise").sum()
-                    inputs_manual_total = (df[col_justificativa].fillna('').str.strip() == "Operadora: Manual - Em analise").sum()
-                
-                # Volumetria de atendimento
-                total_ad = df['Is_AD'].sum()
-                total_id = df['Is_ID'].sum()
-                
-                # Cálculos de performance e percentuais de conclusão requeridos
-                pct_conclusao = (inseridos_count / total_pacientes_iw * 100) if total_pacientes_iw > 0 else 0.0
-                pct_robo = (inputs_robo_total / total_pacientes_iw * 100) if total_pacientes_iw > 0 else 0.0
-                pct_manual = (inputs_manual_total / total_pacientes_iw * 100) if total_pacientes_iw > 0 else 0.0
-                
-                # Criação do dicionário estruturado para linha única
-                dados_historico = {
-                    "Data da Coleta": data_atual,
-                    "Hora da Coleta": hora_atual,
-                    "Ciclo de Prorrogação": ciclo_opcao,
-                    "Total Pacientes Base": total_pacientes_iw,
-                    "Quantidade Pendentes": total_pendentes_input_real,
-                    "Imputs por Robô": inputs_robo_total,
-                    "Imputs Manuais": inputs_manual_total,
-                    "Total Pacientes AD": total_ad,
-                    "Total Pacientes ID": total_id,
-                    "Valor Total Base": round(valor_total_todos_pacientes, 2),
-                    "Valor Total Pendente": round(valor_total_pendencias_setores, 2),
-                    "Quantidade Colaboradores": cont_colaboradores,
-                    "Percentual Conclusão Base (%)": round(pct_conclusao, 2),
-                    "Percentual Realizado Robô (%)": round(pct_robo, 2),
-                    "Percentual Realizado Manual (%)": round(pct_manual, 2)
+                nova_linha = {
+                    "Data": data_atual, "Hora": hora_atual, "Ciclo": ciclo_opcao,
+                    "Total da Base": total_pacientes_iw, "Pendentes": total_pendentes_input_real,
+                    "Robô": inputs_robo_total, "Manual": inputs_manual_total,
+                    "Valor Pendente": round(valor_total_pendencias_setores, 2),
+                    "Percentual de Conclusão": round(pct_conclusao_atual, 2)
                 }
                 
-                df_linha_historico = pd.DataFrame([dados_historico])
+                # Atualiza a tabela na memória da sessão
+                st.session_state.historico_coletas_df = pd.concat([st.session_state.historico_coletas_df, pd.DataFrame([nova_linha])], ignore_index=True)
                 
-                st.success("✨ Linha de histórico gerada com sucesso! Você pode copiá-la diretamente na tabela abaixo ou exportar o arquivo.")
+                # Gravação automática e permanente no arquivo Excel físico
+                try:
+                    st.session_state.historico_coletas_df.to_excel("historico_prorrogacoes.xlsx", index=False)
+                    st.success("✨ Nova linha registrada com sucesso e salva permanentemente no arquivo Excel (historico_prorrogacoes.xlsx)!")
+                except Exception as e:
+                    st.error(f"Erro ao salvar permanentemente no arquivo Excel: {e}")
+
+            # --- 15. PREVISÃO INTELIGENTE DE CONCLUSÃO ---
+            if len(st.session_state.historico_coletas_df) >= 2:
+                st.markdown("### ⏱️ Previsão Inteligente de Conclusão")
+                try:
+                    h_df = st.session_state.historico_coletas_df.copy()
+                    # Mapeamento do tempo aproximado de delta entre coletas
+                    h_df['timestamp'] = pd.to_datetime(h_df['Data'] + ' ' + h_df['Hora'], format='%d/%m/%Y %H:%M:%S')
+                    delta_tempo = (h_df['timestamp'].iloc[-1] - h_df['timestamp'].iloc[0]).total_seconds() / 3600.0
+                    
+                    if delta_tempo > 0:
+                        pacientes_reduzidos = h_df['Pendentes'].iloc[0] - h_df['Pendentes'].iloc[-1]
+                        valor_reduzido = h_df['Valor Pendente'].iloc[0] - h_df['Valor Pendente'].iloc[-1]
+                        
+                        vel_pacientes = pacientes_reduzidos / delta_tempo
+                        vel_financeira = valor_reduzido / delta_tempo
+                        
+                        restantes_p = h_df['Pendentes'].iloc[-1]
+                        if vel_pacientes > 0:
+                            horas_restantes = restantes_p / vel_pacientes
+                            tempo_restante_str = f"{int(horas_restantes)}h {int((horas_restantes % 1) * 60)}min"
+                            horario_conclusao_estimado = datetime.now() + pd.Timedelta(hours=horas_restantes)
+                            horario_conclusao_str = horario_conclusao_estimado.strftime("%H:%M")
+                        else:
+                            vel_pacientes = 0
+                            tempo_restante_str = "Indeterminado"
+                            horario_conclusao_str = "Estagnado"
+                        
+                        col_p1, col_p2, col_p3, col_p4 = st.columns(4)
+                        col_p1.metric("Velocidade Atual", f"{int(vel_pacientes)} pac/hora")
+                        col_p2.metric("Redução Financeira", f"R$ {vel_financeira:,.2f}/hora")
+                        col_p3.metric("Horário Previsto de Conclusão", horario_conclusao_str)
+                        col_p4.metric("Tempo Restante Estimado", tempo_restante_str)
+                except Exception as e:
+                    st.info("Aguardando mais variações cronológicas de registros de coletas para firmar velocidades.")
+
+            # --- GRÁFICOS DE PRODUTIVIDADE OPERACIONAL (REQUISITOS 3, 4, 5, 6) ---
+            st.markdown("---")
+            st.markdown("### 📊 Gráficos de Produtividade e Carga de Trabalho")
+            
+            # Coleta de dados dos colaboradores para os rankings
+            linhas_produtividade = []
+            if col_responsavel in df.columns:
+                colaboradores_unicos = df[df[col_responsavel].fillna('').str.strip() != ''][col_responsavel].unique()
+                excecoes_setor = ["IMPLANTAÇÃO", "IMPLANTACAO", "PRORROGAÇÃO", "PRORROGACAO", "OPERAÇÃO", "OPERACAO"]
+                for colab in colaboradores_unicos:
+                    if any(exc in str(colab).upper() for exc in excecoes_setor): continue
+                    df_c = df[df[col_responsavel] == colab]
+                    linhas_produtividade.append({
+                        "Colaborador": colab,
+                        "Quantidade de Pacientes": len(df_c),
+                        "Valor Total": df_c['valor_calculado'].sum()
+                    })
+            
+            df_prod_graficos = pd.DataFrame(linhas_produtividade) if linhas_produtividade else pd.DataFrame(columns=["Colaborador", "Quantidade de Pacientes", "Valor Total"])
+            
+            col_g1, col_g2 = st.columns(2)
+            with col_g1:
+                st.markdown("#### 👤 Carga de Trabalho: Ranking dos Colaboradores")
+                if not df_prod_graficos.empty:
+                    fig_rank_p = px.bar(df_prod_graficos.sort_values(by="Quantidade de Pacientes", ascending=True), y="Colaborador", x="Quantidade de Pacientes", orientation='h', color_discrete_sequence=['#C07C20'])
+                    fig_rank_p.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+                    st.plotly_chart(fig_rank_p, use_container_width=True)
+                else: st.info("Sem dados de colaboradores.")
                 
-                # Visualização em DataFrame para cópia rápida com um clique
-                st.dataframe(df_linha_historico, use_container_width=True, hide_index=True)
+            with col_g2:
+                st.markdown("#### 💰 Concentração Financeira por Colaborador")
+                if not df_prod_graficos.empty:
+                    fig_rank_f = px.bar(df_prod_graficos.sort_values(by="Valor Total", ascending=True), y="Colaborador", x="Valor Total", orientation='h', color_discrete_sequence=['#5C1220'])
+                    fig_rank_f.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+                    st.plotly_chart(fig_rank_f, use_container_width=True)
+                else: st.info("Sem dados financeiros por colaborador.")
                 
-                # Geração do CSV formatado para o ecossistema Google Sheets brasileiro (separador ponto e vírgula)
-                csv_buffer = io.StringIO()
-                df_linha_historico.to_csv(csv_buffer, index=False, sep=';', encoding='utf-8-sig')
+            col_g3, col_g4 = st.columns(2)
+            with col_g3:
+                st.markdown("#### 🤖 Comparativo Nível de Automação (Robô x Manual)")
+                df_robo_man = pd.DataFrame({
+                    "Método de Input": ["Robô", "Manual"],
+                    "Quantidade de Imputs": [inputs_robo_total, inputs_manual_total]
+                })
+                fig_rm = px.bar(df_robo_man, x="Método de Input", y="Quantidade de Imputs", color="Método de Input", color_discrete_map={"Robô": "#C07C20", "Manual": "#5C1220"})
+                fig_rm.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+                st.plotly_chart(fig_rm, use_container_width=True)
                 
-                st.download_button(
-                    label="📥 Baixar Linha como CSV (Google Sheets)",
-                    data=csv_buffer.getvalue(),
-                    file_name=f"linha_historico_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                    mime="text/csv"
-                )
+            with col_g4:
+                st.markdown("#### ### 🏥 Distribuição de Modelos (AD x ID)")
+                df_ad_id_pizza = pd.DataFrame({
+                    "Segmento": ["Pacientes AD", "Pacientes ID"],
+                    "Total": [df['Is_AD'].sum(), df['Is_ID'].sum()]
+                })
+                fig_pizza = px.pie(df_ad_id_pizza, names="Segmento", values="Total", hole=0.4, color_discrete_sequence=['#5C1220', '#C07C20'])
+                fig_pizza.update_layout(margin=dict(t=20, b=20, l=20, r=20))
+                st.plotly_chart(fig_pizza, use_container_width=True)
+
+            # --- RELATÓRIO ANALÍTICO DA EQUIPE COM PERCENTUAIS (REQUISITO 2) ---
+            st.markdown("---")
+            st.markdown("### 👤 Relatório Analítico Complementar da Equipe")
+            if col_responsavel in df.columns and not df_prod_graficos.empty:
+                df_analitico_completo = []
+                for _, r_gc in df_prod_graficos.iterrows():
+                    c_name = r_gc["Colaborador"]
+                    df_c_filtro = df[df[col_responsavel] == c_name]
+                    
+                    p_id = df_c_filtro['Is_ID'].sum()
+                    p_ad = df_c_filtro['Is_AD'].sum()
+                    
+                    imp_r = (df_c_filtro[col_justificativa].fillna('').str.strip() == "Operadora: Robô - Em analise").sum() if col_justificativa in df.columns else 0
+                    imp_m = (df_c_filtro[col_justificativa].fillna('').str.strip() == "Operadora: Manual - Em analise").sum() if col_justificativa in df.columns else 0
+                    soma_inputs = imp_r + imp_m
+                    
+                    pct_base = (r_gc["Quantidade de Pacientes"] / total_pacientes_iw * 100) if total_pacientes_iw > 0 else 0.0
+                    pct_auto = (imp_r / soma_inputs * 100) if soma_inputs > 0 else 0.0
+                    pct_manu = (imp_m / soma_inputs * 100) if soma_inputs > 0 else 0.0
+                    
+                    df_analitico_completo.append({
+                        "Colaborador": c_name,
+                        "Pacientes ID": p_id,
+                        "Pacientes AD": p_ad,
+                        "Imputs Robô": imp_r,
+                        "Imputs Manuais": imp_m,
+                        "Total Pacientes": r_gc["Quantidade de Pacientes"],
+                        "Percentual da Base (%)": round(pct_base, 2),
+                        "Percentual Automação (%)": round(pct_auto, 2),
+                        "Percentual Manual (%)": round(pct_manu, 2),
+                        "Valor Total": r_gc["Valor Total"]
+                    })
+                df_grid_re2 = pd.DataFrame(df_analitico_completo)
+                st.dataframe(df_grid_re2.style.format({
+                    'Valor Total': 'R$ {:,.2f}',
+                    'Percentual da Base (%)': '{:.2f}%',
+                    'Percentual Automação (%)': '{:.2f}%',
+                    'Percentual Manual (%)': '{:.2f}%'
+                }), use_container_width=True, hide_index=True)
+
+            # --- 7. HISTÓRICO DAS COLETAS (TABELA ACUMULADA) ---
+            st.markdown("---")
+            st.markdown("### 📋 Histórico das Coletas Gravadas")
+            
+            # Filtros unificados do histórico (Requisito 11)
+            if not st.session_state.historico_coletas_df.empty:
+                col_f1, col_f2, col_f3 = st.columns(3)
+                with col_f1: f_ciclo = st.multiselect("Filtrar Ciclo:", options=st.session_state.historico_coletas_df["Ciclo"].unique(), default=st.session_state.historico_coletas_df["Ciclo"].unique())
+                with col_f2: f_data = st.multiselect("Filtrar Data:", options=st.session_state.historico_coletas_df["Data"].unique(), default=st.session_state.historico_coletas_df["Data"].unique())
+                with col_f3: f_hora = st.multiselect("Filtrar Hora da Coleta:", options=st.session_state.historico_coletas_df["Hora"].unique(), default=st.session_state.historico_coletas_df["Hora"].unique())
+                
+                df_historico_filtrado = st.session_state.historico_coletas_df[
+                    (st.session_state.historico_coletas_df["Ciclo"].isin(f_ciclo)) &
+                    (st.session_state.historico_coletas_df["Data"].isin(f_data)) &
+                    (st.session_state.historico_coletas_df["Hora"].isin(f_hora))
+                ]
+                st.dataframe(df_historico_filtrado, use_container_width=True, hide_index=True)
+                
+                # --- GRÁFICOS HISTÓRICOS DE EVOLUÇÃO (REQUISITOS 8, 9, 10) ---
+                df_historico_filtrado['Data_Hora_Eixo'] = df_historico_filtrado['Data'] + " " + df_historico_filtrado['Hora']
+                
+                st.markdown("#### 📈 Linhas de Tendência Histórica")
+                col_lh1, col_lh2, col_lh3 = st.columns(3)
+                with col_lh1:
+                    st.markdown("**Evolução das Pendências**")
+                    fig_lh1 = px.line(df_historico_filtrado, x="Data_Hora_Eixo", y="Pendentes", markers=True, color_discrete_sequence=['#5C1220'])
+                    st.plotly_chart(fig_lh1, use_container_width=True)
+                with col_lh2:
+                    st.markdown("**Evolução do Valor Pendente**")
+                    fig_lh2 = px.line(df_historico_filtrado, x="Data_Hora_Eixo", y="Valor Pendente", markers=True, color_discrete_sequence=['#C07C20'])
+                    st.plotly_chart(fig_lh2, use_container_width=True)
+                with col_lh3:
+                    st.markdown("**Evolução da Conclusão (%)**")
+                    fig_lh3 = px.line(df_historico_filtrado, x="Data_Hora_Eixo", y="Percentual de Conclusão", markers=True, color_discrete_sequence=['#28A745'])
+                    st.plotly_chart(fig_lh3, use_container_width=True)
+            else:
+                st.info("Utilize o botão acima para registrar a primeira linha de coleta e disparar os gráficos evolutivos de linha.")
+
+            # --- 13. INSIGHTS AUTOMÁTICOS DA COLETA & RECOMENDAÇÕES ---
+            st.markdown("---")
+            st.markdown("### 📊 Insights Automáticos da Coleta Ativa")
+            
+            # Análise automatizada com os dados reais
+            total_ad_ins = df['Is_AD'].sum()
+            total_id_ins = df['Is_ID'].sum()
+            soma_ad_id = total_ad_ins + total_id_ins
+            pct_ad_ins = (total_ad_ins / soma_ad_id * 100) if soma_ad_id > 0 else 0.0
+            pct_id_ins = (total_id_ins / soma_ad_id * 100) if soma_ad_id > 0 else 0.0
+            
+            col_ins1, col_ins2 = st.columns(2)
+            with col_ins1:
+                st.markdown("""<div class="insight-card"><b>🤖 Automação de Carga:</b><br>"""
+                            f"O Robô realizou {pct_automacao_atual:.1f}% dos inputs avaliados de forma ativa no cruzamento geral do banco de dados.</div>", unsafe_allow_html=True)
+                
+                st.markdown("""<div class="insight-card"><b>👨‍⚕️ Distribuição de Perfil Clínico (AD x ID):</b><br>"""
+                            f"A base possui {pct_ad_ins:.1f}% de pacientes em Atenção Domiciliar (AD) e {pct_id_ins:.1f}% de pacientes em Internação Domiciliar (ID).</div>", unsafe_allow_html=True)
+                
+                st.markdown("""<div class="insight-card"><b>📊 Situação Atual de Faturamento:</b><br>"""
+                            f"A base encontra-se {pct_conclusao_atual:.2f}% concluída, restando {total_pendentes_input_real} pacientes pendentes de digitação final.</div>", unsafe_allow_html=True)
+            
+            with col_ins2:
+                if not df_prod_graficos.empty:
+                    max_colab = df_prod_graficos.sort_values(by="Quantidade de Pacientes", ascending=False).iloc[0]
+                    min_colab = df_prod_graficos.sort_values(by="Quantidade de Pacientes", ascending=True).iloc[0]
+                    max_val_colab = df_prod_graficos.sort_values(by="Valor Total", ascending=False).iloc[0]
+                    
+                    pct_max_carga = (max_colab['Quantidade de Pacientes'] / total_pacientes_iw * 100) if total_pacientes_iw > 0 else 0.0
+                    
+                    st.markdown(f"""<div class="insight-card"><b>👥 Distribuição Operacional de Equipe:</b><br>
+                                <b>{max_colab['Colaborador']}</b> possui a maior carga de faturamento da equipe, representando {pct_max_carga:.1f}% da base. 
+                                Por outro lado, <b>{min_colab['Colaborador']}</b> concentra a menor carga atual de auditoria.</div>""", unsafe_allow_html=True)
+                                
+                    st.markdown(f"""<div class="insight-card"><b>💰 Concentração por Maior Valor Crítico:</b><br>
+                                O colaborador <b>{max_val_colab['Colaborador']}</b> concentra a maior criticidade financeira absoluta, totalizando <b>R$ {max_val_colab['Valor Total']:,.2f}</b> sob sua responsabilidade direta no IW.</div>""", unsafe_allow_html=True)
+                else:
+                    st.info("Carregue uma base com auditores definidos no IW para extrair volumes individuais de liderança.")
+
+            # Insights de Delta Comparativo Histórico
+            if len(st.session_state.historico_coletas_df) >= 2:
+                st.markdown("#### 📈 Variações em Relação à Coleta Anterior")
+                ultimo_reg = st.session_state.historico_coletas_df.iloc[-1]
+                penultimo_reg = st.session_state.historico_coletas_df.iloc[-2]
+                
+                dif_pacientes = int(penultimo_reg["Pendentes"] - ultimo_reg["Pendentes"])
+                dif_valor = float(penultimo_reg["Valor Pendente"] - ultimo_reg["Valor Pendente"])
+                
+                col_h_ins1, col_h_ins2 = st.columns(2)
+                with col_h_ins1:
+                    if dif_pacientes >= 0: st.success(f"📈 Desde a última coleta registrada, foram concluídos ou liberados {dif_pacientes} pacientes.")
+                    else: st.warning(f"⚠️ Houve um incremento de {abs(dif_pacientes)} novos pacientes travados na fila de conferência.")
+                with col_h_ins2:
+                    if dif_valor >= 0: st.success(f"💸 O valor pendente total foi reduzido em R$ {dif_valor:,.2f} em relação ao último ponto.")
+                    else: st.warning(f"⚠️ O montante financeiro retido cresceu R$ {abs(dif_valor):,.2f} com novas pendências técnicas.")
+
+            # --- RECOMENDAÇÕES AUTOMÁTICAS ---
+            st.markdown("#### 💡 Diretrizes Operacionais Recomendadas")
+            if not df_prod_graficos.empty:
+                max_p = df_prod_graficos["Quantidade de Pacientes"].max()
+                min_p = df_prod_graficos["Quantidade de Pacientes"].min()
+                if (max_p - min_p) > 15:
+                    st.warning("⚠️ **Equilíbrio de Carga:** Identificada alta disparidade na distribuição de pacientes. Recomenda-se redistribuir as pastas operacionais dos colaboradores mais sobrecarregados.")
+            if pct_automacao_atual < 50.0:
+                st.info("🤖 **Incentivo Tecnológico:** O nível de faturamento automatizado está abaixo do ideal. Monitore as travas do Robô e incentive a migração de lotes elegíveis.")
+            if valor_total_pendencias_setores > st.session_state.meta_valor:
+                st.error("🚨 **Força Tarefa Financeira:** O valor financeiro retido por pendência técnica estrapolou os limites de segurança. Priorize os pacientes de maior valor bruto com as coordenações das especialidades.")
 
         with aba2:
             st.markdown("### 👤 Relatório Analítico de Produtividade da Equipe")
