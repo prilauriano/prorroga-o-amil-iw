@@ -146,7 +146,11 @@ if arquivos_amil:
         col_valor = next((col for col in df.columns if 'valor a cobrar' in col or 'valor' in col), 'valor a cobrar')
         col_atendimento = next((col for col in df.columns if 'nr. atendimento' in col or 'nº atendimento' in col or 'nr.atendimento' in col), 'nr. atendimento')
         col_classificacao = next((col for col in df.columns if 'classific. atendimento' in col or 'classific.' in col or 'classificacao' in col), 'classific. atendimento')
-        col_responsavel = next((col for col in df.columns if 'resp' in col or 'pessoa' in col or 'persona' in col), 'pessoa resp aut')
+        
+        # AJUSTE CIRÚRGICO DA COLUNA DE RESPONSÁVEL: Evita capturar colunas de tipo/classificação do processo
+        col_responsavel = next((col for col in df.columns if 'colaborador' in col or 'usuario' in col or 'analista' in col or 'operador' in col or 'nome resp' in col), None)
+        if not col_responsavel:
+            col_responsavel = next((col for col in df.columns if ('resp' in col or 'pessoa' in col or 'persona' in col) and 'tipo' not in col and 'status' not in col), 'pessoa resp aut')
         
         campos_obrigatorios = ['nº guia solicitação (tiss)', 'senha aprovação', 'status aut orç', 'nr. matricula', col_responsavel, col_classificacao, 'nome do paciente', 'id orçam.']
         if col_justificativa: campos_obrigatorios.append(col_justificativa)
@@ -333,12 +337,11 @@ if arquivos_amil:
                 
                 if setor_nome == "Terapia Ocupacional" and atend_id in atendimentos_com_pendencia_to_estrita:
                     df_s_ativos_reais.append(idx_row)
-                elif setor_nome != "Terapia Ocupacional" and atend_id in atendimentos_com_outras_pendencias:
+                elif sector_nome != "Terapia Ocupacional" and atend_id in atendimentos_com_outras_pendencias:
                     df_s_ativos_reais.append(idx_row)
             
             if df_s_ativos_reais:
                 df_s_ativos_df = pd.DataFrame(df_s_ativos_reais)
-                # Remove TO da listagem de strings conforme regra do negócio
                 df_s_ativos_df = df_s_ativos_df[df_s_ativos_df['setor_normalizado'] != "Terapia Ocupacional"]
                 
                 setores_agrupados = df_s_ativos_df.groupby(col_s_atend)['setor_normalizado'].apply(
@@ -346,7 +349,6 @@ if arquivos_amil:
                 ).reset_index()
                 setores_agrupados.columns = [col_atendimento, 'Especialidades Pendentes']
                 
-                # MERGE CIRÚRGICO: preserva todas as colunas originais (inclusive col_responsavel)
                 df = pd.merge(df, setores_agrupados, on=col_atendimento, how='left')
 
         df['Especialidades Pendentes'] = df['Especialidades Pendentes'].fillna('Nenhuma pendência técnica apontada')
@@ -416,7 +418,6 @@ if arquivos_amil:
         with aba2:
             st.markdown("### 👤 Carga Operacional e Rastreabilidade de Inputs (Consertado e Ativo)")
             if col_responsavel in df_producao_limpa.columns:
-                # Criação das colunas de cálculo usando a cópia limpa e correta da produção
                 df_calc_equipe = df_producao_limpa.copy()
                 df_calc_equipe['Valor_ID'] = df_calc_equipe.apply(lambda r: r['valor_calculado'] if r['Is_ID'] else 0.0, axis=1)
                 df_calc_equipe['Valor_AD'] = df_calc_equipe.apply(lambda r: r['valor_calculado'] if r['Is_AD'] else 0.0, axis=1)
