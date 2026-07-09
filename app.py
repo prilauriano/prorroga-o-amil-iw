@@ -568,19 +568,19 @@ if arquivos_amil:
                 cor_semaforo = "#D4EDDA"
                 borda_semaforo = "#28A745"
                 texto_cor = "#155724"
-                status_titulo = "🟢 VERDE — Operação dentro das metas"
+                status_titulo = f"🟢 VERDE — {setor_vilao if setor_vilao else 'Sem pendências críticas'}"
                 status_mensagem = "A prorrogação está evoluindo conforme o esperado."
             elif len(motivos_alerta) <= 2:
                 cor_semaforo = "#FFF3CD"
                 borda_semaforo = "#FFC107"
                 texto_cor = "#856404"
-                status_titulo = "🟡 AMARELO — Operação requer atenção"
+                status_titulo = f"🟡 AMARELO — {setor_vilao if setor_vilao else 'Atenção necessária'}"
                 status_mensagem = f"Alguns indicadores encontram-se abaixo da meta: {', '.join(motivos_alerta)}."
             else:
                 cor_semaforo = "#F8D7DA"
                 borda_semaforo = "#DC3545"
                 texto_cor = "#721C24"
-                status_titulo = "🔴 VERMELHO — Operação crítica"
+                status_titulo = f"🔴 VERMELHO — {setor_vilao if setor_vilao else 'Operação crítica'}"
                 status_mensagem = "Recomenda-se atuação imediata da equipe! Multiplos gargalos de retenção técnica ativos."
                 
             # Determinação da Tendência Baseada no Histórico de Sessão
@@ -603,7 +603,7 @@ if arquivos_amil:
 
             st.markdown(f"""
                 <div class="semaforo-card" style="background-color: {cor_semaforo}; border-left: 8px solid {borda_semaforo}; color: {texto_cor};">
-                    <h4 style='margin:0 0 5px 0; font-weight:800;'>🚦 Situação da Operação: {status_titulo}</h4>
+                    <h4 style='margin:0 0 5px 0; font-weight:800;'>🚦 Situação das Pendências dos Setores: {status_titulo}</h4>
                     <p style='margin:0 0 8px 0; font-size:14px;'>{status_mensagem}</p>
                     <small><b>Tendência Geral Calculada:</b> {tendencia_txt} | <b>Horário Alvo:</b> {horario_previsto}</small>
                     {linha_vilao_html}
