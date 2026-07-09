@@ -7,16 +7,11 @@ from datetime import datetime
 # 1. Configuração de página
 st.set_page_config(page_title="Dashboard Prorrogações | Solar Cuidados", page_icon="☀️", layout="wide")
 
-# Inicialização do Histórico com Carregamento Automático do Arquivo Excel Permanente
+# Inicialização do Histórico em Sessão (Persistência em memória na navegação do Streamlit)
 if 'historico_coletas_df' not in st.session_state:
-    try:
-        # Tenta carregar o histórico permanente existente
-        st.session_state.historico_coletas_df = pd.read_excel("historico_prorrogacoes.xlsx")
-    except:
-        # Caso o arquivo ainda não exista, cria a estrutura padrão vazia
-        st.session_state.historico_coletas_df = pd.DataFrame(columns=[
-            "Data", "Hora", "Ciclo", "Total da Base", "Pendentes", "Robô", "Manual", "Valor Pendente", "Percentual de Conclusão"
-        ])
+    st.session_state.historico_coletas_df = pd.DataFrame(columns=[
+        "Data", "Hora", "Ciclo", "Total da Base", "Pendentes", "Robô", "Manual", "Valor Pendente", "Percentual de Conclusão"
+    ])
 
 # Parâmetros Padrão de Configuração de Metas (Caso o usuário queira customizar na interface)
 if 'meta_conclusao' not in st.session_state: st.session_state.meta_conclusao = 85.0
@@ -291,7 +286,7 @@ if arquivos_amil:
         atendimentos_com_pendencia_to_estrita = set()
         df_s_consolidado = pd.DataFrame()
         
-        if archivos_setores:
+        if arquivos_setores:
             lista_dfs_setores = []
             for arq_s in arquivos_setores:
                 if arq_s.name.endswith('.csv'):
@@ -547,16 +542,8 @@ if arquivos_amil:
                     "Valor Pendente": round(valor_total_pendencias_setores, 2),
                     "Percentual de Conclusão": round(pct_conclusao_atual, 2)
                 }
-                
-                # Atualiza a tabela na memória da sessão
                 st.session_state.historico_coletas_df = pd.concat([st.session_state.historico_coletas_df, pd.DataFrame([nova_linha])], ignore_index=True)
-                
-                # Gravação automática e permanente no arquivo Excel físico
-                try:
-                    st.session_state.historico_coletas_df.to_excel("historico_prorrogacoes.xlsx", index=False)
-                    st.success("✨ Nova linha registrada com sucesso e salva permanentemente no arquivo Excel (historico_prorrogacoes.xlsx)!")
-                except Exception as e:
-                    st.error(f"Erro ao salvar permanentemente no arquivo Excel: {e}")
+                st.success("✨ Nova linha registrada com sucesso no histórico da sessão!")
 
             # --- 15. PREVISÃO INTELIGENTE DE CONCLUSÃO ---
             if len(st.session_state.historico_coletas_df) >= 2:
@@ -642,7 +629,7 @@ if arquivos_amil:
                 st.plotly_chart(fig_rm, use_container_width=True)
                 
             with col_g4:
-                st.markdown("#### ### 🏥 Distribuição de Modelos (AD x ID)")
+                st.markdown("#### 🏥 Distribuição de Modelos (AD x ID)")
                 df_ad_id_pizza = pd.DataFrame({
                     "Segmento": ["Pacientes AD", "Pacientes ID"],
                     "Total": [df['Is_AD'].sum(), df['Is_ID'].sum()]
