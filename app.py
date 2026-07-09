@@ -4,6 +4,13 @@ import plotly.express as px
 import io
 import unicodedata
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+FUSO_BRASILIA = ZoneInfo("America/Sao_Paulo")
+
+def agora_brasil():
+    """Retorna o horário atual já convertido para o fuso de Brasília (America/Sao_Paulo)."""
+    return datetime.now(FUSO_BRASILIA)
 
 
 # 1. Configuração de página
@@ -559,7 +566,7 @@ if arquivos_amil:
             card7.metric("Total Pacientes ID", f"{df['Is_ID'].sum()}")
             card8.metric("Imputs pelo Robô", f"{inputs_robo_total}")
             card9.metric("Imputs Manualmente", f"{inputs_manual_total}")
-            card10.metric("Última Atualização", datetime.now().strftime("%d/%m/%Y %H:%M"))
+            card10.metric("Última Atualização", agora_brasil().strftime("%d/%m/%Y %H:%M"))
             
             # --- BOTÃO DE GERAÇÃO PARA O HISTÓRICO ---
             st.markdown("---")
