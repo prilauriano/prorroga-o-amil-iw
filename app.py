@@ -435,14 +435,26 @@ if arquivos_amil:
             texto = unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8')
             return texto
 
-        def contem_status_excluido_liberados(status):
-            texto_norm = normalizar_texto_sem_acento(status)
-            if texto_norm == '':
-                return True
+        def contem_termo_excluido_liberados(texto):
+            texto_norm = normalizar_texto_sem_acento(texto)
             termos_excluidos = ['em avaliacao', 'implantacao', 'operacao']
             return any(termo in texto_norm for termo in termos_excluidos)
 
-        df_faturamento_geral_sem_robo['_status_excluido_liberados'] = df_faturamento_geral_sem_robo['status aut orç'].apply(contem_status_excluido_liberados) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else False
+        # Status vazio ou contendo um dos termos excluídos (comportamento original preservado)
+        if 'status aut orç' in df_faturamento_geral_sem_robo.columns:
+            status_vazio_ou_termo = df_faturamento_geral_sem_robo['status aut orç'].apply(
+                lambda s: normalizar_texto_sem_acento(s) == '' or contem_termo_excluido_liberados(s)
+            )
+        else:
+            status_vazio_ou_termo = False
+
+        # Conteúdo do campo "Justificativa Pendência" (IW) também não pode indicar esses termos
+        if col_justificativa in df_faturamento_geral_sem_robo.columns:
+            justificativa_com_termo = df_faturamento_geral_sem_robo[col_justificativa].apply(contem_termo_excluido_liberados)
+        else:
+            justificativa_com_termo = False
+
+        df_faturamento_geral_sem_robo['_status_excluido_liberados'] = status_vazio_ou_termo | justificativa_com_termo
 
         df_liberados = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['Inserido_Amil'] == False) & 
