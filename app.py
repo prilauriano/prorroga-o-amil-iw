@@ -493,6 +493,58 @@ if arquivos_amil:
             st.session_state.meta_valor = st.number_input("Meta Máxima de Valor Pendente (R$)", min_value=0.0, value=st.session_state.meta_valor)
             horario_previsto = st.text_input("Horário previsto para conclusão", value="18:00")
 
+        # --- IDENTIFICAÇÃO DO SETOR "VILÃO" (maior concentração financeira de pendência técnica) ---
+        # Reaproveita a mesma regra de agrupamento já usada na aba "Lista de Pendências" (exclui TO,
+        # que é tratada separadamente na lógica de bloqueio) para não gerar divergência entre telas.
+        setor_vilao = None
+        valor_vilao = 0.0
+        pct_vilao_do_total = 0.0
+        if arquivos_setores and not df_s_consolidado.empty and 'setor_normalizado' in df_s_consolidado.columns and valor_total_pendencias_setores > 0:
+            df_s_vilao = df_s_consolidado[
+                (df_s_consolidado['setor_normalizado'] != "Terapia Ocupacional") &
+                (df_s_consolidado[col_s_atend].isin(atendimentos_com_outras_pendencias))
+            ].copy()
+            if not df_s_vilao.empty:
+                df_valores_unicos_vilao = df[[col_atendimento, 'valor_calculado']].drop_duplicates()
+                df_s_vilao_valores = pd.merge(df_s_vilao, df_valores_unicos_vilao, left_on=col_s_atend, right_on=col_atendimento, how='inner')
+                df_s_vilao_valores = df_s_vilao_valores.drop_duplicates(subset=[col_s_atend, 'setor_normalizado'])
+                df_ranking_setor_vilao = df_s_vilao_valores.groupby('setor_normalizado')['valor_calculado'].sum().reset_index().sort_values(by='valor_calculado', ascending=False)
+                if not df_ranking_setor_vilao.empty:
+                    linha_vilao = df_ranking_setor_vilao.iloc[0]
+                    setor_vilao = linha_vilao['setor_normalizado']
+                    valor_vilao = linha_vilao['valor_calculado']
+                    pct_vilao_do_total = (valor_vilao / valor_total_pendencias_setores * 100)
+
+        # --- RISCO DE NÃO CONCLUIR ATÉ O HORÁRIO ALVO (usa a mesma lógica de velocidade da Previsão Inteligente) ---
+        risco_prazo = False
+        mensagem_prazo = ""
+        if len(st.session_state.historico_coletas_df) >= 2:
+            try:
+                h_df_semaforo = st.session_state.historico_coletas_df.copy()
+                h_df_semaforo['timestamp'] = pd.to_datetime(h_df_semaforo['Data'] + ' ' + h_df_semaforo['Hora'], format='%d/%m/%Y %H:%M:%S')
+                delta_tempo_sem = (h_df_semaforo['timestamp'].iloc[-1] - h_df_semaforo['timestamp'].iloc[0]).total_seconds() / 3600.0
+                if delta_tempo_sem > 0:
+                    pacientes_reduzidos_sem = h_df_semaforo['Pendentes'].iloc[0] - h_df_semaforo['Pendentes'].iloc[-1]
+                    vel_pacientes_sem = pacientes_reduzidos_sem / delta_tempo_sem
+                    if vel_pacientes_sem > 0:
+                        horas_restantes_sem = total_pendentes_input_real / vel_pacientes_sem
+                        horario_conclusao_estimado_sem = agora_brasil() + pd.Timedelta(hours=horas_restantes_sem)
+                        try:
+                            hora_alvo_sem, min_alvo_sem = map(int, horario_previsto.strip().split(":"))
+                            horario_alvo_dt = agora_brasil().replace(hour=hora_alvo_sem, minute=min_alvo_sem, second=0, microsecond=0)
+                            if horario_conclusao_estimado_sem > horario_alvo_dt:
+                                risco_prazo = True
+                                mensagem_prazo = f"⏱️ No ritmo atual, a conclusão está projetada para as {horario_conclusao_estimado_sem.strftime('%H:%M')} — depois do horário alvo ({horario_previsto})."
+                            else:
+                                mensagem_prazo = f"⏱️ No ritmo atual, a conclusão está projetada para as {horario_conclusao_estimado_sem.strftime('%H:%M')} — dentro do horário alvo ({horario_previsto})."
+                        except Exception:
+                            pass
+                    else:
+                        risco_prazo = True
+                        mensagem_prazo = "⏱️ Ritmo de conclusão estagnado — nenhum avanço detectado entre as últimas coletas registradas."
+            except Exception:
+                pass
+
         # --- ABAS DO DASHBOARD ---
         aba1, aba2, aba3, aba4, aba5, aba_r, aba6, aba7 = st.tabs([
             "☀️ Histórico de Coletas & Produtividade", "👤 Gestão de Equipe", "🏥 Segmentação ID / AD", 
@@ -510,6 +562,7 @@ if arquivos_amil:
             if pct_conclusao_atual < st.session_state.meta_conclusao: motivos_alerta.append("Conclusão abaixo da meta")
             if total_pendentes_input_real > st.session_state.meta_pendencias: motivos_alerta.append("Volume de pendências acima do limite")
             if valor_total_pendencias_setores > st.session_state.meta_valor: motivos_alerta.append("Valor financeiro retido crítico")
+            if risco_prazo: motivos_alerta.append(f"Risco de não concluir até o horário alvo ({horario_previsto})")
             
             if len(motivos_alerta) == 0:
                 cor_semaforo = "#D4EDDA"
@@ -538,11 +591,23 @@ if arquivos_amil:
                 if ultimo_p < penultimo_p: tendencia_txt = "📈 Melhorando (Reduzindo bloqueos)"
                 elif ultimo_p > penultimo_p: tendencia_txt = "📉 Piorando (Acúmulo de travas)"
 
+            # Linha extra do card: identifica o setor "vilão" (maior concentração financeira de pendência)
+            linha_vilao_html = ""
+            if setor_vilao:
+                linha_vilao_html = f"<br><small>🎯 <b>Principal gargalo:</b> {setor_vilao} — R$ {valor_vilao:,.2f} ({pct_vilao_do_total:.1f}% do valor total pendente)</small>"
+
+            # Linha extra do card: projeção de conclusão frente ao horário alvo
+            linha_prazo_html = ""
+            if mensagem_prazo:
+                linha_prazo_html = f"<br><small>{mensagem_prazo}</small>"
+
             st.markdown(f"""
                 <div class="semaforo-card" style="background-color: {cor_semaforo}; border-left: 8px solid {borda_semaforo}; color: {texto_cor};">
                     <h4 style='margin:0 0 5px 0; font-weight:800;'>🚦 Situação da Operação: {status_titulo}</h4>
                     <p style='margin:0 0 8px 0; font-size:14px;'>{status_mensagem}</p>
                     <small><b>Tendência Geral Calculada:</b> {tendencia_txt} | <b>Horário Alvo:</b> {horario_previsto}</small>
+                    {linha_vilao_html}
+                    {linha_prazo_html}
                 </div>
             """, unsafe_allow_html=True)
             
