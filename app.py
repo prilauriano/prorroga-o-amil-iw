@@ -616,7 +616,7 @@ if arquivos_amil:
             card1, card2, card3, card4, card5 = st.columns(5)
             card1.metric("Total de Pacientes", f"{total_pacientes_iw}")
             card2.metric("Quantidade de Pendentes", f"{total_pendentes_input_real}")
-            card3.metric("Percentual de Conclusão", f"{pct_conclusao_atual:.2f}%", delta=f"faltam {total_pendentes_input_real}", delta_color="off")
+            card3.metric("Percentual de Conclusão", f"{pct_conclusao_atual:.2f}%", delta=f"{inseridos_count} imputados", delta_color="off")
             card4.metric("Valor Total Pendente", f"R$ {valor_total_pendencias_setores:,.2f}")
             
             # Contagem dinâmica de colaboradores qualificados
