@@ -194,7 +194,11 @@ if arquivos_amil:
             
         for c in campos_obrigatorios:
             if c in df.columns:
-                df[c] = df[c].fillna('').astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+                # Tratamento para preservar o texto da Justificativa conforme exigido
+                if c == col_justificativa:
+                    df[c] = df[c].fillna('').astype(str).str.strip()
+                else:
+                    df[c] = df[c].fillna('').astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             elif c == 'id orçam.':
                 df['id orçam.'] = ''
             elif c == col_responsavel:
@@ -487,7 +491,7 @@ if arquivos_amil:
                 borda_semaforo = "#DC3545"
                 texto_cor = "#721C24"
                 status_titulo = "🔴 VERMELHO — Operação crítica"
-                status_mensagem = "Recomenda-se atuação imediata da equipe! Multiplos gargalos de retenção técnica ativos."
+                status_mensagem = "Recomenda-se atuação imediata da equipe! Multiplos gargalos de retenção técnica activos."
                 
             # Determinação da Tendência Baseada no Histórico de Sessão
             tendencia_txt = "➡️ Estável"
@@ -550,7 +554,6 @@ if arquivos_amil:
                 st.markdown("### ⏱️ Previsão Inteligente de Conclusão")
                 try:
                     h_df = st.session_state.historico_coletas_df.copy()
-                    # Mapeamento do tempo aproximado de delta entre coletas
                     h_df['timestamp'] = pd.to_datetime(h_df['Data'] + ' ' + h_df['Hora'], format='%d/%m/%Y %H:%M:%S')
                     delta_tempo = (h_df['timestamp'].iloc[-1] - h_df['timestamp'].iloc[0]).total_seconds() / 3600.0
                     
@@ -580,11 +583,10 @@ if arquivos_amil:
                 except Exception as e:
                     st.info("Aguardando mais variações cronológicas de registros de coletas para firmar velocidades.")
 
-            # --- GRÁFICOS DE PRODUTIVIDADE OPERACIONAL (REQUISITOS 3, 4, 5, 6) ---
+            # --- GRÁFICOS DE PRODUTIVIDADE OPERACIONAL ---
             st.markdown("---")
             st.markdown("### 📊 Gráficos de Produtividade e Carga de Trabalho")
             
-            # Coleta de dados dos colaboradores para os rankings
             linhas_produtividade = []
             if col_responsavel in df.columns:
                 colaboradores_unicos = df[df[col_responsavel].fillna('').str.strip() != ''][col_responsavel].unique()
@@ -638,142 +640,9 @@ if arquivos_amil:
                 fig_pizza.update_layout(margin=dict(t=20, b=20, l=20, r=20))
                 st.plotly_chart(fig_pizza, use_container_width=True)
 
-            # --- RELATÓRIO ANALÍTICO DA EQUIPE COM PERCENTUAIS (REQUISITO 2) ---
+            # --- RECOMENDAÇÕES OPERATIVAS ---
             st.markdown("---")
-            st.markdown("### 👤 Relatório Analítico Complementar da Equipe")
-            if col_responsavel in df.columns and not df_prod_graficos.empty:
-                df_analitico_completo = []
-                for _, r_gc in df_prod_graficos.iterrows():
-                    c_name = r_gc["Colaborador"]
-                    df_c_filtro = df[df[col_responsavel] == c_name]
-                    
-                    p_id = df_c_filtro['Is_ID'].sum()
-                    p_ad = df_c_filtro['Is_AD'].sum()
-                    
-                    imp_r = (df_c_filtro[col_justificativa].fillna('').str.strip() == "Operadora: Robô - Em analise").sum() if col_justificativa in df.columns else 0
-                    imp_m = (df_c_filtro[col_justificativa].fillna('').str.strip() == "Operadora: Manual - Em analise").sum() if col_justificativa in df.columns else 0
-                    soma_inputs = imp_r + imp_m
-                    
-                    pct_base = (r_gc["Quantidade de Pacientes"] / total_pacientes_iw * 100) if total_pacientes_iw > 0 else 0.0
-                    pct_auto = (imp_r / soma_inputs * 100) if soma_inputs > 0 else 0.0
-                    pct_manu = (imp_m / soma_inputs * 100) if soma_inputs > 0 else 0.0
-                    
-                    df_analitico_completo.append({
-                        "Colaborador": c_name,
-                        "Pacientes ID": p_id,
-                        "Pacientes AD": p_ad,
-                        "Imputs Robô": imp_r,
-                        "Imputs Manuais": imp_m,
-                        "Total Pacientes": r_gc["Quantidade de Pacientes"],
-                        "Percentual da Base (%)": round(pct_base, 2),
-                        "Percentual Automação (%)": round(pct_auto, 2),
-                        "Percentual Manual (%)": round(pct_manu, 2),
-                        "Valor Total": r_gc["Valor Total"]
-                    })
-                df_grid_re2 = pd.DataFrame(df_analitico_completo)
-                st.dataframe(df_grid_re2.style.format({
-                    'Valor Total': 'R$ {:,.2f}',
-                    'Percentual da Base (%)': '{:.2f}%',
-                    'Percentual Automação (%)': '{:.2f}%',
-                    'Percentual Manual (%)': '{:.2f}%'
-                }), use_container_width=True, hide_index=True)
-
-            # --- 7. HISTÓRICO DAS COLETAS (TABELA ACUMULADA) ---
-            st.markdown("---")
-            st.markdown("### 📋 Histórico das Coletas Gravadas")
-            
-            # Filtros unificados do histórico (Requisito 11)
-            if not st.session_state.historico_coletas_df.empty:
-                col_f1, col_f2, col_f3 = st.columns(3)
-                with col_f1: f_ciclo = st.multiselect("Filtrar Ciclo:", options=st.session_state.historico_coletas_df["Ciclo"].unique(), default=st.session_state.historico_coletas_df["Ciclo"].unique())
-                with col_f2: f_data = st.multiselect("Filtrar Data:", options=st.session_state.historico_coletas_df["Data"].unique(), default=st.session_state.historico_coletas_df["Data"].unique())
-                with col_f3: f_hora = st.multiselect("Filtrar Hora da Coleta:", options=st.session_state.historico_coletas_df["Hora"].unique(), default=st.session_state.historico_coletas_df["Hora"].unique())
-                
-                df_historico_filtrado = st.session_state.historico_coletas_df[
-                    (st.session_state.historico_coletas_df["Ciclo"].isin(f_ciclo)) &
-                    (st.session_state.historico_coletas_df["Data"].isin(f_data)) &
-                    (st.session_state.historico_coletas_df["Hora"].isin(f_hora))
-                ]
-                st.dataframe(df_historico_filtrado, use_container_width=True, hide_index=True)
-                
-                # --- GRÁFICOS HISTÓRICOS DE EVOLUÇÃO (REQUISITOS 8, 9, 10) ---
-                df_historico_filtrado['Data_Hora_Eixo'] = df_historico_filtrado['Data'] + " " + df_historico_filtrado['Hora']
-                
-                st.markdown("#### 📈 Linhas de Tendência Histórica")
-                col_lh1, col_lh2, col_lh3 = st.columns(3)
-                with col_lh1:
-                    st.markdown("**Evolução das Pendências**")
-                    fig_lh1 = px.line(df_historico_filtrado, x="Data_Hora_Eixo", y="Pendentes", markers=True, color_discrete_sequence=['#5C1220'])
-                    st.plotly_chart(fig_lh1, use_container_width=True)
-                with col_lh2:
-                    st.markdown("**Evolução do Valor Pendente**")
-                    fig_lh2 = px.line(df_historico_filtrado, x="Data_Hora_Eixo", y="Valor Pendente", markers=True, color_discrete_sequence=['#C07C20'])
-                    st.plotly_chart(fig_lh2, use_container_width=True)
-                with col_lh3:
-                    st.markdown("**Evolução da Conclusão (%)**")
-                    fig_lh3 = px.line(df_historico_filtrado, x="Data_Hora_Eixo", y="Percentual de Conclusão", markers=True, color_discrete_sequence=['#28A745'])
-                    st.plotly_chart(fig_lh3, use_container_width=True)
-            else:
-                st.info("Utilize o botão acima para registrar a primeira linha de coleta e disparar os gráficos evolutivos de linha.")
-
-            # --- 13. INSIGHTS AUTOMÁTICOS DA COLETA & RECOMENDAÇÕES ---
-            st.markdown("---")
-            st.markdown("### 📊 Insights Automáticos da Coleta Ativa")
-            
-            # Análise automatizada com os dados reais
-            total_ad_ins = df['Is_AD'].sum()
-            total_id_ins = df['Is_ID'].sum()
-            soma_ad_id = total_ad_ins + total_id_ins
-            pct_ad_ins = (total_ad_ins / soma_ad_id * 100) if soma_ad_id > 0 else 0.0
-            pct_id_ins = (total_id_ins / soma_ad_id * 100) if soma_ad_id > 0 else 0.0
-            
-            col_ins1, col_ins2 = st.columns(2)
-            with col_ins1:
-                st.markdown("""<div class="insight-card"><b>🤖 Automação de Carga:</b><br>"""
-                            f"O Robô realizou {pct_automacao_atual:.1f}% dos inputs avaliados de forma ativa no cruzamento geral do banco de dados.</div>", unsafe_allow_html=True)
-                
-                st.markdown("""<div class="insight-card"><b>👨‍⚕️ Distribuição de Perfil Clínico (AD x ID):</b><br>"""
-                            f"A base possui {pct_ad_ins:.1f}% de pacientes em Atenção Domiciliar (AD) e {pct_id_ins:.1f}% de pacientes em Internação Domiciliar (ID).</div>", unsafe_allow_html=True)
-                
-                st.markdown("""<div class="insight-card"><b>📊 Situação Atual de Faturamento:</b><br>"""
-                            f"A base encontra-se {pct_conclusao_atual:.2f}% concluída, restando {total_pendentes_input_real} pacientes pendentes de digitação final.</div>", unsafe_allow_html=True)
-            
-            with col_ins2:
-                if not df_prod_graficos.empty:
-                    max_colab = df_prod_graficos.sort_values(by="Quantidade de Pacientes", ascending=False).iloc[0]
-                    min_colab = df_prod_graficos.sort_values(by="Quantidade de Pacientes", ascending=True).iloc[0]
-                    max_val_colab = df_prod_graficos.sort_values(by="Valor Total", ascending=False).iloc[0]
-                    
-                    pct_max_carga = (max_colab['Quantidade de Pacientes'] / total_pacientes_iw * 100) if total_pacientes_iw > 0 else 0.0
-                    
-                    st.markdown(f"""<div class="insight-card"><b>👥 Distribuição Operacional de Equipe:</b><br>
-                                <b>{max_colab['Colaborador']}</b> possui a maior carga de faturamento da equipe, representando {pct_max_carga:.1f}% da base. 
-                                Por outro lado, <b>{min_colab['Colaborador']}</b> concentra a menor carga atual de auditoria.</div>""", unsafe_allow_html=True)
-                                
-                    st.markdown(f"""<div class="insight-card"><b>💰 Concentração por Maior Valor Crítico:</b><br>
-                                O colaborador <b>{max_val_colab['Colaborador']}</b> concentra a maior criticidade financeira absoluta, totalizando <b>R$ {max_val_colab['Valor Total']:,.2f}</b> sob sua responsabilidade direta no IW.</div>""", unsafe_allow_html=True)
-                else:
-                    st.info("Carregue uma base com auditores definidos no IW para extrair volumes individuais de liderança.")
-
-            # Insights de Delta Comparativo Histórico
-            if len(st.session_state.historico_coletas_df) >= 2:
-                st.markdown("#### 📈 Variações em Relação à Coleta Anterior")
-                ultimo_reg = st.session_state.historico_coletas_df.iloc[-1]
-                penultimo_reg = st.session_state.historico_coletas_df.iloc[-2]
-                
-                dif_pacientes = int(penultimo_reg["Pendentes"] - ultimo_reg["Pendentes"])
-                dif_valor = float(penultimo_reg["Valor Pendente"] - ultimo_reg["Valor Pendente"])
-                
-                col_h_ins1, col_h_ins2 = st.columns(2)
-                with col_h_ins1:
-                    if dif_pacientes >= 0: st.success(f"📈 Desde a última coleta registrada, foram concluídos ou liberados {dif_pacientes} pacientes.")
-                    else: st.warning(f"⚠️ Houve um incremento de {abs(dif_pacientes)} novos pacientes travados na fila de conferência.")
-                with col_h_ins2:
-                    if dif_valor >= 0: st.success(f"💸 O valor pendente total foi reduzido em R$ {dif_valor:,.2f} em relação ao último ponto.")
-                    else: st.warning(f"⚠️ O montante financeiro retido cresceu R$ {abs(dif_valor):,.2f} com novas pendências técnicas.")
-
-            # --- RECOMENDAÇÕES AUTOMÁTICAS ---
-            st.markdown("#### 💡 Diretrizes Operacionais Recomendadas")
+            st.markdown("### 💡 Diretrizes Operacionais Recomendadas")
             if not df_prod_graficos.empty:
                 max_p = df_prod_graficos["Quantidade de Pacientes"].max()
                 min_p = df_prod_graficos["Quantidade de Pacientes"].min()
@@ -786,7 +655,6 @@ if arquivos_amil:
 
         with aba2:
             st.markdown("### 👤 Relatório Analítico de Produtividade da Equipe")
-            
             if col_responsavel in df.columns:
                 colaboradores_unicos = df[df[col_responsavel].fillna('').str.strip() != ''][col_responsavel].unique()
                 linhas_gestao = []
@@ -805,13 +673,8 @@ if arquivos_amil:
                     paci_id = df_contagem_id_ad['Is_ID'].sum()
                     paci_ad = df_contagem_id_ad['Is_AD'].sum()
                     
-                    inputs_robo = 0
-                    if col_justificativa in df_filtrado_colab.columns:
-                        inputs_robo = (df_filtrado_colab[col_justificativa].fillna('').str.strip() == "Operadora: Robô - Em analise").sum()
-                        
-                    inputs_manuais = 0
-                    if col_justificativa in df_filtrado_colab.columns:
-                        inputs_manuais = (df_filtrado_colab[col_justificativa].fillna('').str.strip() == "Operadora: Manual - Em analise").sum()
+                    inputs_robo = (df_filtrado_colab[col_justificativa].fillna('').str.strip() == "Operadora: Robô - Em analise").sum() if col_justificativa in df_filtrado_colab.columns else 0
+                    inputs_manuais = (df_filtrado_colab[col_justificativa].fillna('').str.strip() == "Operadora: Manual - Em analise").sum() if col_justificativa in df_filtrado_colab.columns else 0
                     
                     total_paci = len(df_filtrado_colab)
                     valor_total = df_filtrado_colab['valor_calculado'].sum()
@@ -828,11 +691,6 @@ if arquivos_amil:
                 
                 if linhas_gestao:
                     df_gestao_final = pd.DataFrame(linhas_gestao)
-                    df_gestao_final = df_gestao_final[[
-                        "Colaborador", "Pacientes ID", "Pacientes AD", 
-                        "Imputs feitos pelo Robô", "Imputs Manuais", 
-                        "Quantitativo Total de Pacientes", "Valor Total dos Pacientes"
-                    ]]
                     st.dataframe(df_gestao_final.style.format({'Valor Total dos Pacientes': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
                 else:
                     st.info("Nenhum colaborador elegível localizado com os parâmetros aplicados.")
@@ -844,7 +702,6 @@ if arquivos_amil:
 
         with aba4:
             st.markdown("### 📋 Lista de Pendências Ativas por Orçamento do Paciente")
-            
             lista_atendimentos_visiveis = []
             if not df_prontuario.empty: lista_atendimentos_visiveis.extend(df_prontuario[col_atendimento].tolist())
             if not df_ops.empty: lista_atendimentos_visiveis.extend(df_ops[col_atendimento].tolist())
@@ -901,14 +758,21 @@ if arquivos_amil:
                 st.warning("⚠️ Para ver quem está liberado, carregue a planilha de Setores no campo de upload.")
             else:
                 st.markdown(f"**🔥 Total Prontos para Input: {len(df_liberados)} | Valor de Giro Rápido: R$ {df_liberados['valor_calculado'].sum():,.2f}**")
-                df_liberados_clean_excel = df_liberados[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', col_responsavel, 'valor_calculado']].copy()
-                df_liberados_clean_excel.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo Atendimento', 'Responsável', 'Valor a Cobrar (R$)']
+                
+                # --- APLICAÇÃO EXCLUSIVA DA REGRA SOLICITADA ---
+                # Criação da visão de tela e do Buffer para o Excel garantindo a inclusão estrita da Justificativa
+                df_liberados_view = df_liberados[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', col_responsavel, 'valor_calculado']].copy()
+                df_liberados_view['Justificativa Pendência'] = df_liberados[col_justificativa] if col_justificativa in df_liberados.columns else ''
+                
+                # Renomeando colunas da visualização e mantendo a nova coluna intocada
+                df_liberados_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo Atendimento', 'Responsável', 'Valor a Cobrar (R$)', 'Justificativa Pendência']
                 
                 buffer_liberados = io.BytesIO()
                 with pd.ExcelWriter(buffer_liberados, engine='xlsxwriter') as writer:
-                    df_liberados_clean_excel.to_excel(writer, sheet_name='Liberados Input', index=False)
+                    df_liberados_view.to_excel(writer, sheet_name='Liberados Input', index=False)
+                
                 st.download_button(label="📥 Baixar Planilha Estruturada: Liberados para Input", data=buffer_liberados.getvalue(), file_name="liberados_para_input.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                st.dataframe(df_liberados_clean_excel.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
+                st.dataframe(df_liberados_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
         with aba_r:
             st.markdown("### 🤖 Fila de Pacientes Encaminhados para Input Automatizado")
