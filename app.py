@@ -439,7 +439,7 @@ if arquivos_amil:
             texto_norm = normalizar_texto_sem_acento(status)
             if texto_norm == '':
                 return True
-            termos_excluidos = ['em avaliacao', 'implantacao', 'operados']
+            termos_excluidos = ['em avaliacao', 'implantacao', 'operacao']
             return any(termo in texto_norm for termo in termos_excluidos)
 
         df_faturamento_geral_sem_robo['_status_excluido_liberados'] = df_faturamento_geral_sem_robo['status aut orç'].apply(contem_status_excluido_liberados) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else False
