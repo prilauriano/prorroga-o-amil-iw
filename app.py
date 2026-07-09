@@ -164,7 +164,7 @@ if arquivos_amil:
                 df[col_responsavel] = ''
         
         if col_atendimento in df.columns:
-            df[col_atendimento] = df[col_atendimento].fillna('').astype(str).str.strip()
+            df[col_atendimento] = df[col_atendimento].fillna('').astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
         else:
             df[col_atendimento] = ''
             
@@ -225,8 +225,8 @@ if arquivos_amil:
 
         df['Possui_Erro_Critico'] = df[col_status_rel].str.lower().str.contains("arquivo não encontrado|arquivo nao encontrado", na=False) if col_status_rel else False
 
-        # --- 📑 LEITURA DA PLANILHA 3 (PACIENTES TO COM EVOLUÇÃO) ---
-        nomes_entregues_planilha3 = set()
+        # --- 📑 LEITURA DA PLANILHA 3 (PACIENTES TO COM EVOLUÇÃO) - USANDO Nº ATENDIMENTO ---
+        atendimentos_entregues_planilha3 = set()
         if arquivos_to:
             for arq_to in arquivos_to:
                 if arq_to.name.endswith('.csv'):
@@ -238,9 +238,11 @@ if arquivos_amil:
                     df_to_temp = pd.read_excel(arq_to)
                 df_to_temp.columns = df_to_temp.columns.str.strip().str.lower()
                 
-                col_nome_to = next((col for col in df_to_temp.columns if 'nome' in col or 'paciente' in col), None)
-                if col_nome_to:
-                    nomes_entregues_planilha3.update(df_to_temp[col_nome_to].dropna().astype(str).str.lower().str.strip().unique())
+                col_atend_to = next((col for col in df_to_temp.columns if 'nº atendimento' in col or 'nr. atendimento' in col or 'atendimento' in col), None)
+                if col_atend_to:
+                    atendimentos_entregues_planilha3.update(
+                        df_to_temp[col_atend_to].dropna().astype(str).str.replace(r'\.0$', '', regex=True).str.strip().unique()
+                    )
 
         # --- ⚙️ PROCESSAMENTO DA PLANILHA 2 (SETORES TÉCNICOS) ---
         atendimentos_com_outras_pendencias = set()
@@ -264,12 +266,10 @@ if arquivos_amil:
             df_s_consolidado = pd.concat(lista_dfs_setores, ignore_index=True)
             col_s_atend = next((c for c in df_s_consolidado.columns if 'nº atendimento' in c or 'nr. atendimento' in c or 'atendimento' in c), None)
             col_s_esp = next((c for c in df_s_consolidado.columns if 'grupo especialidade' in c or 'especialidade' in c), None)
-            col_s_nome = next((c for c in df_s_consolidado.columns if 'nome paciente' in c or 'nome do paciente' in c or 'paciente' in c or 'nome' in c), None)
             col_s_template = next((c for c in df_s_consolidado.columns if 'template' in c), None)
             
-            if col_s_atend and col_s_nome and col_s_template:
-                df_s_consolidado[col_s_atend] = df_s_consolidado[col_s_atend].astype(str).str.strip()
-                df_s_consolidado['nome_paciente_p2'] = df_s_consolidado[col_s_nome].astype(str).str.lower().str.strip()
+            if col_s_atend and col_s_template:
+                df_s_consolidado[col_s_atend] = df_s_consolidado[col_s_atend].fillna('').astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
                 df_s_consolidado['template_p2'] = df_s_consolidado[col_s_template].fillna('').astype(str).str.upper().str.strip()
                 
                 if col_s_esp:
@@ -294,17 +294,17 @@ if arquivos_amil:
 
                 df_s_consolidado['setor_normalizado'] = df_s_consolidado.apply(normalizar_nome_setor, axis=1)
 
-                def aplicar_nova_regra_validacao_to(linha):
-                    nome_p2 = str(linha['nome_paciente_p2'])
+                def aplicar_nova_regra_validacao_to_atend(linha):
+                    atend_p2 = str(linha[col_s_atend])
                     setor = str(linha['setor_normalizado'])
                     if setor == "Terapia Ocupacional":
-                        if nome_p2 in nomes_entregues_planilha3:
+                        if atend_p2 in atendimentos_entregues_planilha3:
                             return "RESOLVIDO_TO"
                         else:
                             return "TO (Pendência Ativa)"
                     return "OUTRO"
 
-                df_s_consolidado['status_validacao_to'] = df_s_consolidado.apply(aplicar_nova_regra_validacao_to, axis=1)
+                df_s_consolidado['status_validacao_to'] = df_s_consolidado.apply(aplicar_nova_regra_validacao_to_atend, axis=1)
 
                 for _, text_linha in df_s_consolidado.iterrows():
                     atend = str(text_linha[col_s_atend])
@@ -319,14 +319,13 @@ if arquivos_amil:
         # --- LOGICAS DE FILTRO POR PACIENTE ---
         df['Tem_Outra_Pendencia_Setor'] = df[col_atendimento].isin(atendimentos_com_outras_pendencias)
         
-        def checar_to_bloqueante_final(linha):
+        def checar_to_bloqueante_final_atend(linha):
             atend = str(linha[col_atendimento])
-            nome_amil = str(linha['nome do paciente_limpo'])
-            if nome_amil in nomes_entregues_planilha3: 
+            if atend in atendimentos_entregues_planilha3: 
                 return False
             return atend in atendimentos_com_pendencia_to_estrita
 
-        df['Tem_Pendencia_TO_Ativa'] = df.apply(checar_to_bloqueante_final, axis=1)
+        df['Tem_Pendencia_TO_Ativa'] = df.apply(checar_to_bloqueante_final_atend, axis=1)
         df['Tem_Pendencia_Setor'] = (df['Tem_Outra_Pendencia_Setor'] | df['Tem_Pendencia_TO_Ativa']) & (~df['É_Robo'])
 
         # --- CONSTRUÇÃO DAS ESPECIALIDADES PENDENTES ---
@@ -371,7 +370,7 @@ if arquivos_amil:
         
         df_faturamento_geral_sem_robo = df_faturamento_geral[df_faturamento_geral['É_Robo'] == False].copy()
 
-        # Tabelas Filtradas (Utilizando estritamente a coluna do IW original sem mutações)
+        # Tabelas Filtradas
         df_prontuario = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['status aut orç'] == 'Prontuário Pendente') & 
             (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == True) &
@@ -420,44 +419,32 @@ if arquivos_amil:
             st.markdown("### 👤 Relatório Analítico de Produtividade da Equipe")
             
             if col_responsavel in df.columns:
-                # Obtenção de todos os colaboradores únicos da coluna Pessoa Resp Aut
                 colaboradores_unicos = df[df[col_responsavel].fillna('').str.strip() != ''][col_responsavel].unique()
-                
                 linhas_gestao = []
                 excecoes_setor = ["IMPLANTAÇÃO", "IMPLANTACAO", "PRORROGAÇÃO", "PRORROGACAO", "OPERAÇÃO", "OPERACAO"]
                 
                 for colab in colaboradores_unicos:
                     colab_upper = str(colab).strip().upper()
-                    # Regra 1: Filtrar fora se for Implantação, Prorrogação ou Operação
                     if any(exc in colab_upper for exc in excecoes_setor) or colab_upper == "":
                         continue
                     
                     df_filtrado_colab = df[df[col_responsavel] == colab]
-                    
-                    # Filtro para contagem das colunas 2 e 3 (Removendo também exceções de processos)
                     df_contagem_id_ad = df_filtrado_colab[
                         ~df_filtrado_colab[col_classificacao].fillna('').str.strip().str.upper().isin(excecoes_setor)
                     ]
                     
-                    # 2. Pacientes ID
                     paci_id = df_contagem_id_ad['Is_ID'].sum()
-                    # 3. Pacientes AD
                     paci_ad = df_contagem_id_ad['Is_AD'].sum()
                     
-                    # 4. Inputs feitos pelo Robô ("Operadora: Robô - Em analise")
                     inputs_robo = 0
                     if col_justificativa in df_filtrado_colab.columns:
                         inputs_robo = (df_filtrado_colab[col_justificativa].fillna('').str.strip() == "Operadora: Robô - Em analise").sum()
                         
-                    # 5. Inputs Manuais ("Operadora: Manual - Em analise")
                     inputs_manuais = 0
                     if col_justificativa in df_filtrado_colab.columns:
                         inputs_manuais = (df_filtrado_colab[col_justificativa].fillna('').str.strip() == "Operadora: Manual - Em analise").sum()
                     
-                    # 6. Quantitativo Total de Pacientes
                     total_paci = len(df_filtrado_colab)
-                    
-                    # 7. Valor Total dos Pacientes
                     valor_total = df_filtrado_colab['valor_calculado'].sum()
                     
                     linhas_gestao.append({
@@ -472,13 +459,11 @@ if arquivos_amil:
                 
                 if linhas_gestao:
                     df_gestao_final = pd.DataFrame(linhas_gestao)
-                    # Forçando a ordem exata requisitada das colunas
                     df_gestao_final = df_gestao_final[[
                         "Colaborador", "Pacientes ID", "Pacientes AD", 
                         "Imputs feitos pelo Robô", "Imputs Manuais", 
                         "Quantitativo Total de Pacientes", "Valor Total dos Pacientes"
                     ]]
-                    
                     st.dataframe(df_gestao_final.style.format({'Valor Total dos Pacientes': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
                 else:
                     st.info("Nenhum colaborador elegível localizado com os parâmetros aplicados.")
