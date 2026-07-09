@@ -194,7 +194,6 @@ if arquivos_amil:
             
         for c in campos_obrigatorios:
             if c in df.columns:
-                # Tratamento para preservar o texto da Justificativa conforme exigido
                 if c == col_justificativa:
                     df[c] = df[c].fillna('').astype(str).str.strip()
                 else:
@@ -424,12 +423,23 @@ if arquivos_amil:
             (df_faturamento_geral_sem_robo['Especialidades Pendentes'] != 'Nenhuma pendência técnica apontada')
         ].sort_values(by='valor_calculado', ascending=False) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else pd.DataFrame()
 
+        # --- CORREÇÃO DA REGRA DE FILTRAGEM (LIBERADOS PARA INPUT) ---
+        # Aplicação de Regex robusto para barrar qualquer variação de 'avaliação', 'implantação', 'operação' ou células vazias
+        regex_status_proibidos = r'avaliação|avaliacao|implantação|implantacao|operação|operacao|^$'
+        
+        filtro_status_valido = ~df_faturamento_geral_sem_robo['status aut orç'].str.lower().str.strip().str.contains(regex_status_proibidos, regex=True, na=True)
+        
+        # Filtro de segurança caso os termos estejam na coluna de classificação
+        if col_classificacao in df_faturamento_geral_sem_robo.columns:
+            filtro_classif_valido = ~df_faturamento_geral_sem_robo[col_classificacao].str.lower().str.strip().str.contains(r'implantação|implantacao|operação|operacao', regex=True, na=False)
+            filtro_operacional_final = filtro_status_valido & filtro_classif_valido
+        else:
+            filtro_operacional_final = filtro_status_valido
+
         df_liberados = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['Inserido_Amil'] == False) & 
             ((df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == False) | (df_faturamento_geral_sem_robo['Especialidades Pendentes'] == 'Nenhuma pendência técnica apontada')) &
-            (~df_faturamento_geral_sem_robo['status aut orç'].str.lower().str.strip().isin([
-                'em avaliação', '', 'implantação', 'implantacao', 'operação', 'operacao'
-            ]))
+            filtro_operacional_final
         ].copy().sort_values(by='valor_calculado', ascending=False)
 
         # Métricas globais
@@ -447,7 +457,7 @@ if arquivos_amil:
             inputs_manual_total = (df[col_justificativa].fillna('').str.strip() == "Operadora: Manual - Em analise").sum()
         total_inputs_calculados = inputs_robo_total + inputs_manual_total
 
-        # --- CONFIGURAÇÃO LATERAL DE METAS (REQUISITO 14) ---
+        # --- CONFIGURAÇÃO LATERAL DE METAS ---
         with st.sidebar:
             st.markdown("### ⚙️ Configuração de Metas")
             st.session_state.meta_conclusao = st.number_input("Meta de Conclusão (%)", min_value=0.0, max_value=100.0, value=st.session_state.meta_conclusao)
@@ -468,7 +478,6 @@ if arquivos_amil:
             pct_conclusao_atual = (inseridos_count / total_pacientes_iw * 100) if total_pacientes_iw > 0 else 0.0
             pct_automacao_atual = (inputs_robo_total / total_inputs_calculados * 100) if total_inputs_calculados > 0 else 0.0
             
-            # Lógica de Classificação das Cores do Alerta
             motivos_alerta = []
             if pct_conclusao_atual < st.session_state.meta_conclusao: motivos_alerta.append("Conclusão abaixo da meta")
             if total_pendentes_input_real > st.session_state.meta_pendencias: motivos_alerta.append("Volume de pendências acima do limite")
@@ -493,7 +502,6 @@ if arquivos_amil:
                 status_titulo = "🔴 VERMELHO — Operação crítica"
                 status_mensagem = "Recomenda-se atuação imediata da equipe! Multiplos gargalos de retenção técnica activos."
                 
-            # Determinação da Tendência Baseada no Histórico de Sessão
             tendencia_txt = "➡️ Estável"
             if len(st.session_state.historico_coletas_df) >= 2:
                 ultimo_p = st.session_state.historico_coletas_df.iloc[-1]["Pendentes"]
@@ -509,7 +517,7 @@ if arquivos_amil:
                 </div>
             """, unsafe_allow_html=True)
             
-            # --- 1. CARDS DE INDICADORES ---
+            # --- CARDS DE INDICADORES ---
             st.markdown("### 📌 Indicadores Estruturados da Coleta Ativa")
             card1, card2, card3, card4, card5 = st.columns(5)
             card1.metric("Total de Pacientes", f"{total_pacientes_iw}")
@@ -517,7 +525,6 @@ if arquivos_amil:
             card3.metric("Percentual de Conclusão", f"{pct_conclusao_atual:.2f}%")
             card4.metric("Valor Total Pendente", f"R$ {valor_total_pendencias_setores:,.2f}")
             
-            # Contagem dinâmica de colaboradores qualificados
             cont_colaboradores_cards = 0
             if col_responsavel in df.columns:
                 colab_filtrados_cards = [c for c in df[col_responsavel].unique() if str(c).strip() != '' and not any(exc in str(c).upper() for exc in ["IMPLANTAÇÃO", "IMPLANTACAO", "PRORROGAÇÃO", "PRORROGACAO", "OPERAÇÃO", "OPERACAO"])]
@@ -549,7 +556,7 @@ if arquivos_amil:
                 st.session_state.historico_coletas_df = pd.concat([st.session_state.historico_coletas_df, pd.DataFrame([nova_linha])], ignore_index=True)
                 st.success("✨ Nova linha registrada com sucesso no histórico da sessão!")
 
-            # --- 15. PREVISÃO INTELIGENTE DE CONCLUSÃO ---
+            # --- PREVISÃO INTELIGENTE DE CONCLUSÃO ---
             if len(st.session_state.historico_coletas_df) >= 2:
                 st.markdown("### ⏱️ Previsão Inteligente de Conclusão")
                 try:
@@ -639,19 +646,6 @@ if arquivos_amil:
                 fig_pizza = px.pie(df_ad_id_pizza, names="Segmento", values="Total", hole=0.4, color_discrete_sequence=['#5C1220', '#C07C20'])
                 fig_pizza.update_layout(margin=dict(t=20, b=20, l=20, r=20))
                 st.plotly_chart(fig_pizza, use_container_width=True)
-
-            # --- RECOMENDAÇÕES OPERATIVAS ---
-            st.markdown("---")
-            st.markdown("### 💡 Diretrizes Operacionais Recomendadas")
-            if not df_prod_graficos.empty:
-                max_p = df_prod_graficos["Quantidade de Pacientes"].max()
-                min_p = df_prod_graficos["Quantidade de Pacientes"].min()
-                if (max_p - min_p) > 15:
-                    st.warning("⚠️ **Equilíbrio de Carga:** Identificada alta disparidade na distribuição de pacientes. Recomenda-se redistribuir as pastas operacionais dos colaboradores mais sobrecarregados.")
-            if pct_automacao_atual < 50.0:
-                st.info("🤖 **Incentivo Tecnológico:** O nível de faturamento automatizado está abaixo do ideal. Monitore as travas do Robô e incentive a migração de lotes elegíveis.")
-            if valor_total_pendencias_setores > st.session_state.meta_valor:
-                st.error("🚨 **Força Tarefa Financeira:** O valor financeiro retido por pendência técnica estrapolou os limites de segurança. Priorize os pacientes de maior valor bruto com as coordenações das especialidades.")
 
         with aba2:
             st.markdown("### 👤 Relatório Analítico de Produtividade da Equipe")
@@ -759,12 +753,9 @@ if arquivos_amil:
             else:
                 st.markdown(f"**🔥 Total Prontos para Input: {len(df_liberados)} | Valor de Giro Rápido: R$ {df_liberados['valor_calculado'].sum():,.2f}**")
                 
-                # --- APLICAÇÃO EXCLUSIVA DA REGRA SOLICITADA ---
-                # Criação da visão de tela e do Buffer para o Excel garantindo a inclusão estrita da Justificativa
                 df_liberados_view = df_liberados[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', col_responsavel, 'valor_calculado']].copy()
                 df_liberados_view['Justificativa Pendência'] = df_liberados[col_justificativa] if col_justificativa in df_liberados.columns else ''
                 
-                # Renomeando colunas da visualização e mantendo a nova coluna intocada
                 df_liberados_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo Atendimento', 'Responsável', 'Valor a Cobrar (R$)', 'Justificativa Pendência']
                 
                 buffer_liberados = io.BytesIO()
