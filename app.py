@@ -18,13 +18,16 @@ st.set_page_config(page_title="Dashboard Prorrogações | Solar Cuidados", page_
 
 
 # Inicialização do Histórico em Sessão (Persistência em memória na navegação do Streamlit)
-if 'historico_coletas_df' not in st.session_state:
-    st.session_state.historico_coletas_df = pd.DataFrame(columns=[
-        "Data da Coleta", "Hora da Coleta", "Ciclo de Prorrogação", "Total Pacientes Base", "Quantidade Pendentes",
-        "Imputs por Robô", "Imputs Manuais", "Total Pacientes AD", "Total Pacientes ID", "Valor Total Base",
-        "Valor Total Pendente", "Quantidade Colaboradores", "Percentual Conclusão Base (%)",
-        "Percentual Realizado Robô (%)", "Percentual Realizado Manual (%)"
-    ])
+_COLUNAS_HISTORICO_ATUAIS = [
+    "Data da Coleta", "Hora da Coleta", "Ciclo de Prorrogação", "Total Pacientes Base", "Quantidade Pendentes",
+    "Imputs por Robô", "Imputs Manuais", "Total Pacientes AD", "Total Pacientes ID", "Valor Total Base",
+    "Valor Total Pendente", "Quantidade Colaboradores", "Percentual Conclusão Base (%)",
+    "Percentual Realizado Robô (%)", "Percentual Realizado Manual (%)"
+]
+
+if 'historico_coletas_df' not in st.session_state or not all(c in st.session_state.historico_coletas_df.columns for c in _COLUNAS_HISTORICO_ATUAIS):
+    # Se não existir ainda, ou se existir num formato antigo (colunas desatualizadas), recria vazio no formato atual.
+    st.session_state.historico_coletas_df = pd.DataFrame(columns=_COLUNAS_HISTORICO_ATUAIS)
 
 
 # Parâmetros Padrão de Configuração de Metas (Caso o usuário queira customizar na interface)
