@@ -188,7 +188,9 @@ if arquivos_amil:
         df = pd.concat(lista_dfs_amil, ignore_index=True)
         
         col_justificativa = next((col for col in df.columns if 'justificativa' in col or 'pendencia' in col), 'justificativa pendência')
-        col_status_rel = next((col for col in df.columns if 'status rel' in col or 'rel orç' in col or 'status_rel' in col or 'rel orc' in col), None)
+        # Lista com TODAS as colunas de status relacionadas (ex.: "Status Rel.Tec" e "Status Rel. Orçamento"),
+        # pois o "Arquivo não encontrado" pode aparecer em qualquer uma delas.
+        cols_status_rel = [col for col in df.columns if 'status rel' in col or 'rel orç' in col or 'status_rel' in col or 'rel orc' in col]
         col_contrato = next((col for col in df.columns if str(col).strip() == 'contrato'), None)
         col_valor = next((col for col in df.columns if 'valor a cobrar' in col or 'valor' in col), 'valor a cobrar')
         col_atendimento = next((col for col in df.columns if 'nr. atendimento' in col or 'nº atendimento' in col or 'nr.atendimento' in col), 'nr. atendimento')
@@ -205,7 +207,7 @@ if arquivos_amil:
         
         campos_obrigatorios = ['nº guia solicitação (tiss)', 'senha aprovação', 'status aut orç', 'nr. matricula', col_responsavel, col_classificacao, 'nome do paciente', 'id orçam.']
         if col_justificativa in df.columns: campos_obrigatorios.append(col_justificativa)
-        if col_status_rel: campos_obrigatorios.append(col_status_rel)
+        if cols_status_rel: campos_obrigatorios.extend(cols_status_rel)
         if col_contrato: campos_obrigatorios.append(col_contrato)
         if col_comentarios: campos_obrigatorios.append(col_comentarios)
             
@@ -277,7 +279,13 @@ if arquivos_amil:
             return ("Robô aguardando input" in just_txt or "Robo aguardando input" in just_txt) and ("Lib. para o Robô input" in status_aut or "Lib. para o Robo input" in status_aut)
         df['É_Robo'] = df.apply(verificar_flag_robo_exata, axis=1)
 
-        df['Possui_Erro_Critico'] = df[col_status_rel].str.lower().str.contains("arquivo não encontrado|arquivo nao encontrado", na=False) if col_status_rel else False
+        if cols_status_rel:
+            mask_erro_critico = pd.Series(False, index=df.index)
+            for _c in cols_status_rel:
+                mask_erro_critico = mask_erro_critico | df[_c].str.lower().str.contains("arquivo não encontrado|arquivo nao encontrado", na=False)
+            df['Possui_Erro_Critico'] = mask_erro_critico
+        else:
+            df['Possui_Erro_Critico'] = False
 
         # --- 📑 LEITURA DA PLANILHA 3 (PACIENTES TO COM EVOLUÇÃO) - USANDO Nº ATENDIMENTO ---
         atendimentos_entregues_planilha3 = set()
@@ -1094,10 +1102,13 @@ if arquivos_amil:
             st.markdown("### 🚨 Alertas de Erro: Arquivo Não Encontrado")
             if len(df_base_erros) > 0:
                 colunas_erro = [col_atendimento, 'id orçam.', 'nome do paciente', 'status aut orç', col_responsavel]
-                if col_status_rel: colunas_erro.insert(3, col_status_rel)
-                df_erro_print = df_base_erros[colunas_erro].copy()
                 colunas_visualizacao = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Status Aut Orç', 'Responsável']
-                if col_status_rel: colunas_visualizacao.insert(3, 'Texto Capturado no Campo')
+                pos_insercao = 3
+                for _c in cols_status_rel:
+                    colunas_erro.insert(pos_insercao, _c)
+                    colunas_visualizacao.insert(pos_insercao, f"Texto Capturado — {_c.strip().title()}")
+                    pos_insercao += 1
+                df_erro_print = df_base_erros[colunas_erro].copy()
                 df_erro_print.columns = colunas_visualizacao
                 st.dataframe(df_erro_print, use_container_width=True, hide_index=True)
             else: st.success("✨ Excelente! Nenhum erro de 'Arquivo Não Encontrado' foi detectado.")
