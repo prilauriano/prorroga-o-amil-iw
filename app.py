@@ -193,6 +193,7 @@ if arquivos_amil:
         col_valor = next((col for col in df.columns if 'valor a cobrar' in col or 'valor' in col), 'valor a cobrar')
         col_atendimento = next((col for col in df.columns if 'nr. atendimento' in col or 'nº atendimento' in col or 'nr.atendimento' in col), 'nr. atendimento')
         col_classificacao = next((col for col in df.columns if 'classific. atendimento' in col or 'classific.' in col or 'classificacao' in col), 'classific. atendimento')
+        col_comentarios = next((col for col in df.columns if 'comentário' in col or 'comentario' in col), None)
         
         # FIXAÇÃO EXATA DA COLUNA DE RESPONSÁVEL DO IW
         col_responsavel = 'persona resp aut' if 'persona resp aut' in df.columns else ('pessoa resp aut' if 'pessoa resp aut' in df.columns else 'responsavel')
@@ -206,6 +207,7 @@ if arquivos_amil:
         if col_justificativa in df.columns: campos_obrigatorios.append(col_justificativa)
         if col_status_rel: campos_obrigatorios.append(col_status_rel)
         if col_contrato: campos_obrigatorios.append(col_contrato)
+        if col_comentarios: campos_obrigatorios.append(col_comentarios)
             
         for c in campos_obrigatorios:
             if c in df.columns:
@@ -442,6 +444,14 @@ if arquivos_amil:
             texto = unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8')
             return texto
 
+        # --- DETECÇÃO DE PEDIDOS CANCELADOS (coluna "Comentários" do IW) ---
+        # Marca True sempre que a palavra "cancelado" aparecer em qualquer parte do texto da coluna
+        # Comentários, ignorando acentuação e caixa (ex.: "Cancelado | Sequência 1 | ...").
+        if col_comentarios and col_comentarios in df.columns:
+            df['Possui_Cancelamento'] = df[col_comentarios].apply(lambda t: 'cancelado' in normalizar_texto_sem_acento(t))
+        else:
+            df['Possui_Cancelamento'] = False
+
         def contem_termo_excluido_liberados(texto):
             texto_norm = normalizar_texto_sem_acento(texto)
             termos_excluidos = ['em avaliacao', 'implantacao', 'operacao', 'operadora pendente']
@@ -553,10 +563,10 @@ if arquivos_amil:
                 pass
 
         # --- ABAS DO DASHBOARD ---
-        aba1, aba2, aba3, aba4, aba5, aba_r, aba6, aba7 = st.tabs([
+        aba1, aba2, aba3, aba4, aba5, aba_r, aba6, aba7, aba_cancelados = st.tabs([
             "☀️ Histórico de Coletas & Produtividade", "👤 Gestão de Equipe", "🏥 Segmentação ID / AD", 
             "📋 Lista de Pendências", "🚀 Liberados para Input", "🤖 Liberados para o Robô",
-            "🏠 Contrato RioHome (Manual)", "🚨 Alertas de Erro"
+            "🏠 Contrato RioHome (Manual)", "🚨 Alertas de Erro", "🚫 Pedidos Cancelados"
         ])
         
         with aba1:
@@ -1091,6 +1101,27 @@ if arquivos_amil:
                 df_erro_print.columns = colunas_visualizacao
                 st.dataframe(df_erro_print, use_container_width=True, hide_index=True)
             else: st.success("✨ Excelente! Nenhum erro de 'Arquivo Não Encontrado' foi detectado.")
+
+        with aba_cancelados:
+            st.markdown("### 🚫 Pedidos Cancelados (detectados pelo campo Comentários do IW)")
+            if not col_comentarios:
+                st.warning("⚠️ Não foi encontrada uma coluna de 'Comentários' no arquivo de Prorrogação carregado.")
+            else:
+                df_cancelados = df[df['Possui_Cancelamento'] == True].copy()
+                if len(df_cancelados) > 0:
+                    st.markdown(f"**🚫 Total de Registros Cancelados: {len(df_cancelados)} | Valor Envolvido: R$ {df_cancelados['valor_calculado'].sum():,.2f}**")
+                    colunas_cancelados = [col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', col_responsavel, 'status aut orç', col_comentarios, 'valor_calculado']
+                    df_cancelados_view = df_cancelados[colunas_cancelados].copy()
+                    df_cancelados_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Responsável', 'Status Atual IW', 'Comentário (IW)', 'Valor a Cobrar (R$)']
+                    df_cancelados_view = df_cancelados_view.sort_values(by='Valor a Cobrar (R$)', ascending=False)
+
+                    buffer_cancelados = io.BytesIO()
+                    with pd.ExcelWriter(buffer_cancelados, engine='xlsxwriter') as writer:
+                        df_cancelados_view.to_excel(writer, sheet_name='Pedidos Cancelados', index=False)
+                    st.download_button(label="📥 Baixar Planilha Estruturada: Pedidos Cancelados", data=buffer_cancelados.getvalue(), file_name="pedidos_cancelados.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    st.dataframe(df_cancelados_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
+                else:
+                    st.success("✨ Nenhum registro com a palavra 'Cancelado' foi encontrado no campo Comentários.")
                     
     except Exception as e: st.error(f"Erro ao processar os arquivos. Detalhe técnico: {e}")
 else: st.info("💡 Tudo pronto! Selecione os arquivos acima nos novos campos estruturados para carregar o cruzamento dinâmico.")
