@@ -663,8 +663,8 @@ if arquivos_amil:
             ciclo_opcao = st.selectbox("Selecione o Ciclo de Prorrogação para o Registro Histórico:", ["Ciclo 1", "Ciclo 2", "Ciclo 3", "Extraordinário"], key="sel_ciclo_historico")
             
             if st.button("📊 Gerar Resumo para Histórico", key="btn_historico_avancado"):
-                data_atual = datetime.now().strftime("%d/%m/%Y")
-                hora_atual = datetime.now().strftime("%H:%M:%S")
+                data_atual = agora_brasil().strftime("%d/%m/%Y")
+                hora_atual = agora_brasil().strftime("%H:%M:%S")
                 
                 nova_linha = {
                     "Data": data_atual, "Hora": hora_atual, "Ciclo": ciclo_opcao,
@@ -696,7 +696,7 @@ if arquivos_amil:
                         if vel_pacientes > 0:
                             horas_restantes = restantes_p / vel_pacientes
                             tempo_restante_str = f"{int(horas_restantes)}h {int((horas_restantes % 1) * 60)}min"
-                            horario_conclusao_estimado = datetime.now() + pd.Timedelta(hours=horas_restantes)
+                            horario_conclusao_estimado = agora_brasil() + pd.Timedelta(hours=horas_restantes)
                             horario_conclusao_str = horario_conclusao_estimado.strftime("%H:%M")
                         else:
                             vel_pacientes = 0
