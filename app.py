@@ -20,7 +20,10 @@ st.set_page_config(page_title="Dashboard Prorrogações | Solar Cuidados", page_
 # Inicialização do Histórico em Sessão (Persistência em memória na navegação do Streamlit)
 if 'historico_coletas_df' not in st.session_state:
     st.session_state.historico_coletas_df = pd.DataFrame(columns=[
-        "Data", "Hora", "Ciclo", "Total da Base", "Pendentes", "Robô", "Manual", "Valor Pendente", "Percentual de Conclusão"
+        "Data da Coleta", "Hora da Coleta", "Ciclo de Prorrogação", "Total Pacientes Base", "Quantidade Pendentes",
+        "Imputs por Robô", "Imputs Manuais", "Total Pacientes AD", "Total Pacientes ID", "Valor Total Base",
+        "Valor Total Pendente", "Quantidade Colaboradores", "Percentual Conclusão Base (%)",
+        "Percentual Realizado Robô (%)", "Percentual Realizado Manual (%)"
     ])
 
 
@@ -546,10 +549,10 @@ if arquivos_amil:
         if len(st.session_state.historico_coletas_df) >= 2:
             try:
                 h_df_semaforo = st.session_state.historico_coletas_df.copy()
-                h_df_semaforo['timestamp'] = pd.to_datetime(h_df_semaforo['Data'] + ' ' + h_df_semaforo['Hora'], format='%d/%m/%Y %H:%M:%S')
+                h_df_semaforo['timestamp'] = pd.to_datetime(h_df_semaforo['Data da Coleta'] + ' ' + h_df_semaforo['Hora da Coleta'], format='%d/%m/%Y %H:%M:%S')
                 delta_tempo_sem = (h_df_semaforo['timestamp'].iloc[-1] - h_df_semaforo['timestamp'].iloc[0]).total_seconds() / 3600.0
                 if delta_tempo_sem > 0:
-                    pacientes_reduzidos_sem = h_df_semaforo['Pendentes'].iloc[0] - h_df_semaforo['Pendentes'].iloc[-1]
+                    pacientes_reduzidos_sem = h_df_semaforo['Quantidade Pendentes'].iloc[0] - h_df_semaforo['Quantidade Pendentes'].iloc[-1]
                     vel_pacientes_sem = pacientes_reduzidos_sem / delta_tempo_sem
                     if vel_pacientes_sem > 0:
                         horas_restantes_sem = total_pendentes_input_real / vel_pacientes_sem
@@ -611,8 +614,8 @@ if arquivos_amil:
             # Determinação da Tendência Baseada no Histórico de Sessão
             tendencia_txt = "➡️ Estável"
             if len(st.session_state.historico_coletas_df) >= 2:
-                ultimo_p = st.session_state.historico_coletas_df.iloc[-1]["Pendentes"]
-                penultimo_p = st.session_state.historico_coletas_df.iloc[-2]["Pendentes"]
+                ultimo_p = st.session_state.historico_coletas_df.iloc[-1]["Quantidade Pendentes"]
+                penultimo_p = st.session_state.historico_coletas_df.iloc[-2]["Quantidade Pendentes"]
                 if ultimo_p < penultimo_p: tendencia_txt = "📈 Melhorando (Reduzindo bloqueos)"
                 elif ultimo_p > penultimo_p: tendencia_txt = "📉 Piorando (Acúmulo de travas)"
 
@@ -665,13 +668,21 @@ if arquivos_amil:
             if st.button("📊 Gerar Resumo para Histórico", key="btn_historico_avancado"):
                 data_atual = agora_brasil().strftime("%d/%m/%Y")
                 hora_atual = agora_brasil().strftime("%H:%M:%S")
-                
+
+                pct_realizado_robo = (inputs_robo_total / total_pacientes_iw * 100) if total_pacientes_iw > 0 else 0.0
+                pct_realizado_manual = (inputs_manual_total / total_pacientes_iw * 100) if total_pacientes_iw > 0 else 0.0
+
                 nova_linha = {
-                    "Data": data_atual, "Hora": hora_atual, "Ciclo": ciclo_opcao,
-                    "Total da Base": total_pacientes_iw, "Pendentes": total_pendentes_input_real,
-                    "Robô": inputs_robo_total, "Manual": inputs_manual_total,
-                    "Valor Pendente": round(valor_total_pendencias_setores, 2),
-                    "Percentual de Conclusão": round(pct_conclusao_atual, 2)
+                    "Data da Coleta": data_atual, "Hora da Coleta": hora_atual, "Ciclo de Prorrogação": ciclo_opcao,
+                    "Total Pacientes Base": total_pacientes_iw, "Quantidade Pendentes": total_pendentes_input_real,
+                    "Imputs por Robô": inputs_robo_total, "Imputs Manuais": inputs_manual_total,
+                    "Total Pacientes AD": int(df['Is_AD'].sum()), "Total Pacientes ID": int(df['Is_ID'].sum()),
+                    "Valor Total Base": round(valor_total_todos_pacientes, 2),
+                    "Valor Total Pendente": round(valor_total_pendencias_setores, 2),
+                    "Quantidade Colaboradores": cont_colaboradores_cards,
+                    "Percentual Conclusão Base (%)": round(pct_conclusao_atual, 2),
+                    "Percentual Realizado Robô (%)": round(pct_realizado_robo, 2),
+                    "Percentual Realizado Manual (%)": round(pct_realizado_manual, 2)
                 }
                 st.session_state.historico_coletas_df = pd.concat([st.session_state.historico_coletas_df, pd.DataFrame([nova_linha])], ignore_index=True)
                 st.success("✨ Nova linha registrada com sucesso no histórico da sessão!")
@@ -682,17 +693,17 @@ if arquivos_amil:
                 try:
                     h_df = st.session_state.historico_coletas_df.copy()
                     # Mapeamento do tempo aproximado de delta entre coletas
-                    h_df['timestamp'] = pd.to_datetime(h_df['Data'] + ' ' + h_df['Hora'], format='%d/%m/%Y %H:%M:%S')
+                    h_df['timestamp'] = pd.to_datetime(h_df['Data da Coleta'] + ' ' + h_df['Hora da Coleta'], format='%d/%m/%Y %H:%M:%S')
                     delta_tempo = (h_df['timestamp'].iloc[-1] - h_df['timestamp'].iloc[0]).total_seconds() / 3600.0
                     
                     if delta_tempo > 0:
-                        pacientes_reduzidos = h_df['Pendentes'].iloc[0] - h_df['Pendentes'].iloc[-1]
-                        valor_reduzido = h_df['Valor Pendente'].iloc[0] - h_df['Valor Pendente'].iloc[-1]
+                        pacientes_reduzidos = h_df['Quantidade Pendentes'].iloc[0] - h_df['Quantidade Pendentes'].iloc[-1]
+                        valor_reduzido = h_df['Valor Total Pendente'].iloc[0] - h_df['Valor Total Pendente'].iloc[-1]
                         
                         vel_pacientes = pacientes_reduzidos / delta_tempo
                         vel_financeira = valor_reduzido / delta_tempo
                         
-                        restantes_p = h_df['Pendentes'].iloc[-1]
+                        restantes_p = h_df['Quantidade Pendentes'].iloc[-1]
                         if vel_pacientes > 0:
                             horas_restantes = restantes_p / vel_pacientes
                             tempo_restante_str = f"{int(horas_restantes)}h {int((horas_restantes % 1) * 60)}min"
@@ -816,33 +827,33 @@ if arquivos_amil:
             # Filtros unificados do histórico (Requisito 11)
             if not st.session_state.historico_coletas_df.empty:
                 col_f1, col_f2, col_f3 = st.columns(3)
-                with col_f1: f_ciclo = st.multiselect("Filtrar Ciclo:", options=st.session_state.historico_coletas_df["Ciclo"].unique(), default=st.session_state.historico_coletas_df["Ciclo"].unique())
-                with col_f2: f_data = st.multiselect("Filtrar Data:", options=st.session_state.historico_coletas_df["Data"].unique(), default=st.session_state.historico_coletas_df["Data"].unique())
-                with col_f3: f_hora = st.multiselect("Filtrar Hora da Coleta:", options=st.session_state.historico_coletas_df["Hora"].unique(), default=st.session_state.historico_coletas_df["Hora"].unique())
+                with col_f1: f_ciclo = st.multiselect("Filtrar Ciclo:", options=st.session_state.historico_coletas_df["Ciclo de Prorrogação"].unique(), default=st.session_state.historico_coletas_df["Ciclo de Prorrogação"].unique())
+                with col_f2: f_data = st.multiselect("Filtrar Data:", options=st.session_state.historico_coletas_df["Data da Coleta"].unique(), default=st.session_state.historico_coletas_df["Data da Coleta"].unique())
+                with col_f3: f_hora = st.multiselect("Filtrar Hora da Coleta:", options=st.session_state.historico_coletas_df["Hora da Coleta"].unique(), default=st.session_state.historico_coletas_df["Hora da Coleta"].unique())
                 
                 df_historico_filtrado = st.session_state.historico_coletas_df[
-                    (st.session_state.historico_coletas_df["Ciclo"].isin(f_ciclo)) &
-                    (st.session_state.historico_coletas_df["Data"].isin(f_data)) &
-                    (st.session_state.historico_coletas_df["Hora"].isin(f_hora))
+                    (st.session_state.historico_coletas_df["Ciclo de Prorrogação"].isin(f_ciclo)) &
+                    (st.session_state.historico_coletas_df["Data da Coleta"].isin(f_data)) &
+                    (st.session_state.historico_coletas_df["Hora da Coleta"].isin(f_hora))
                 ]
                 st.dataframe(df_historico_filtrado, use_container_width=True, hide_index=True)
                 
                 # --- GRÁFICOS HISTÓRICOS DE EVOLUÇÃO (REQUISITOS 8, 9, 10) ---
-                df_historico_filtrado['Data_Hora_Eixo'] = df_historico_filtrado['Data'] + " " + df_historico_filtrado['Hora']
+                df_historico_filtrado['Data_Hora_Eixo'] = df_historico_filtrado['Data da Coleta'] + " " + df_historico_filtrado['Hora da Coleta']
                 
                 st.markdown("#### 📈 Linhas de Tendência Histórica")
                 col_lh1, col_lh2, col_lh3 = st.columns(3)
                 with col_lh1:
                     st.markdown("**Evolução das Pendências**")
-                    fig_lh1 = px.line(df_historico_filtrado, x="Data_Hora_Eixo", y="Pendentes", markers=True, color_discrete_sequence=['#5C1220'])
+                    fig_lh1 = px.line(df_historico_filtrado, x="Data_Hora_Eixo", y="Quantidade Pendentes", markers=True, color_discrete_sequence=['#5C1220'])
                     st.plotly_chart(fig_lh1, use_container_width=True)
                 with col_lh2:
                     st.markdown("**Evolução do Valor Pendente**")
-                    fig_lh2 = px.line(df_historico_filtrado, x="Data_Hora_Eixo", y="Valor Pendente", markers=True, color_discrete_sequence=['#C07C20'])
+                    fig_lh2 = px.line(df_historico_filtrado, x="Data_Hora_Eixo", y="Valor Total Pendente", markers=True, color_discrete_sequence=['#C07C20'])
                     st.plotly_chart(fig_lh2, use_container_width=True)
                 with col_lh3:
                     st.markdown("**Evolução da Conclusão (%)**")
-                    fig_lh3 = px.line(df_historico_filtrado, x="Data_Hora_Eixo", y="Percentual de Conclusão", markers=True, color_discrete_sequence=['#28A745'])
+                    fig_lh3 = px.line(df_historico_filtrado, x="Data_Hora_Eixo", y="Percentual Conclusão Base (%)", markers=True, color_discrete_sequence=['#28A745'])
                     st.plotly_chart(fig_lh3, use_container_width=True)
             else:
                 st.info("Utilize o botão acima para registrar a primeira linha de coleta e disparar os gráficos evolutivos de linha.")
@@ -892,8 +903,8 @@ if arquivos_amil:
                 ultimo_reg = st.session_state.historico_coletas_df.iloc[-1]
                 penultimo_reg = st.session_state.historico_coletas_df.iloc[-2]
                 
-                dif_pacientes = int(penultimo_reg["Pendentes"] - ultimo_reg["Pendentes"])
-                dif_valor = float(penultimo_reg["Valor Pendente"] - ultimo_reg["Valor Pendente"])
+                dif_pacientes = int(penultimo_reg["Quantidade Pendentes"] - ultimo_reg["Quantidade Pendentes"])
+                dif_valor = float(penultimo_reg["Valor Total Pendente"] - ultimo_reg["Valor Total Pendente"])
                 
                 col_h_ins1, col_h_ins2 = st.columns(2)
                 with col_h_ins1:
