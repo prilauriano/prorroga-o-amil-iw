@@ -494,16 +494,21 @@ if arquivos_amil:
             horario_previsto = st.text_input("Horário previsto para conclusão", value="18:00")
 
         # --- IDENTIFICAÇÃO DO SETOR "VILÃO" (maior concentração financeira de pendência técnica) ---
-        # Reaproveita a mesma regra de agrupamento já usada na aba "Lista de Pendências" (exclui TO,
-        # que é tratada separadamente na lógica de bloqueio) para não gerar divergência entre telas.
+        # Usa exatamente a MESMA base de atendimentos do gráfico "Distribuição Financeira Total Ativa"
+        # da aba "Lista de Pendências" (Prontuário Pendente + OPS Pendente), para não divergir entre telas.
+        lista_atendimentos_pendentes_globais = []
+        if not df_prontuario.empty: lista_atendimentos_pendentes_globais.extend(df_prontuario[col_atendimento].tolist())
+        if not df_ops.empty: lista_atendimentos_pendentes_globais.extend(df_ops[col_atendimento].tolist())
+
         setor_vilao = None
         valor_vilao = 0.0
         pct_vilao_do_total = 0.0
-        if arquivos_setores and not df_s_consolidado.empty and 'setor_normalizado' in df_s_consolidado.columns and valor_total_pendencias_setores > 0:
-            df_s_vilao = df_s_consolidado[
-                (df_s_consolidado['setor_normalizado'] != "Terapia Ocupacional") &
-                (df_s_consolidado[col_s_atend].isin(atendimentos_com_outras_pendencias))
-            ].copy()
+        if arquivos_setores and len(lista_atendimentos_pendentes_globais) > 0 and not df_s_consolidado.empty and 'setor_normalizado' in df_s_consolidado.columns:
+            df_s_vilao = df_s_consolidado[df_s_consolidado[col_s_atend].isin(lista_atendimentos_pendentes_globais)].copy()
+            df_s_vilao = df_s_vilao[
+                (df_s_vilao['setor_normalizado'] != "Terapia Ocupacional") &
+                (df_s_vilao[col_s_atend].isin(atendimentos_com_outras_pendencias))
+            ]
             if not df_s_vilao.empty:
                 df_valores_unicos_vilao = df[[col_atendimento, 'valor_calculado']].drop_duplicates()
                 df_s_vilao_valores = pd.merge(df_s_vilao, df_valores_unicos_vilao, left_on=col_s_atend, right_on=col_atendimento, how='inner')
@@ -513,7 +518,9 @@ if arquivos_amil:
                     linha_vilao = df_ranking_setor_vilao.iloc[0]
                     setor_vilao = linha_vilao['setor_normalizado']
                     valor_vilao = linha_vilao['valor_calculado']
-                    pct_vilao_do_total = (valor_vilao / valor_total_pendencias_setores * 100)
+                    # Percentual calculado sobre o mesmo total exibido no gráfico da Lista de Pendências
+                    valor_total_grafico_pendencias = df_ranking_setor_vilao['valor_calculado'].sum()
+                    pct_vilao_do_total = (valor_vilao / valor_total_grafico_pendencias * 100) if valor_total_grafico_pendencias > 0 else 0.0
 
         # --- RISCO DE NÃO CONCLUIR ATÉ O HORÁRIO ALVO (usa a mesma lógica de velocidade da Previsão Inteligente) ---
         risco_prazo = False
@@ -635,7 +642,7 @@ if arquivos_amil:
             
             # --- BOTÃO DE GERAÇÃO PARA O HISTÓRICO ---
             st.markdown("---")
-            ciclo_opcao = st.selectbox("Selecione o Ciclo de Prorrogação para o Registro Histórico:", ["Ciclo 1", "Ciclo 2", "Ciclo 3", "Extraordinário"])
+            ciclo_opcao = st.selectbox("Selecione o Ciclo de Prorrogação para o Registro Histórico:", ["Ciclo 1", "Ciclo 2", "Ciclo 3", "Extraordinário"], key="sel_ciclo_historico")
             
             if st.button("📊 Gerar Resumo para Histórico", key="btn_historico_avancado"):
                 data_atual = datetime.now().strftime("%d/%m/%Y")
@@ -947,6 +954,35 @@ if arquivos_amil:
             st.markdown("### Análise do Modelo de Atendimento Solar (ID vs AD)")
             df_id_ad = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Inserido_Amil'] == False].groupby('Tipo_Atendimento').agg(Quantidade=('nome do paciente', 'count'), Valor_Total=('valor_calculado', 'sum')).reset_index()
             st.dataframe(df_id_ad.style.format({'Valor_Total': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
+
+            st.markdown("---")
+            st.markdown("#### 📄 Detalhamento dos Pacientes Pendentes por Tipo de Atendimento")
+
+            df_id_ad_detalhe_base = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Inserido_Amil'] == False].copy()
+
+            tab_seg_ad, tab_seg_id = st.tabs(["🏠 AD (Atenção Domiciliar)", "🏥 ID (Internação Domiciliar)"])
+
+            with tab_seg_ad:
+                df_ad_detalhe = df_id_ad_detalhe_base[df_id_ad_detalhe_base['Is_AD'] == True].copy()
+                if not df_ad_detalhe.empty:
+                    df_ad_view = df_ad_detalhe[[col_atendimento, 'nome do paciente', col_responsavel, 'valor_calculado']].copy()
+                    df_ad_view.columns = ['Nº Atendimento', 'Paciente', 'Responsável', 'Valor a Cobrar (R$)']
+                    df_ad_view = df_ad_view.sort_values(by='Valor a Cobrar (R$)', ascending=False)
+                    st.markdown(f"**Total: {len(df_ad_view)} pacientes | Valor: R$ {df_ad_view['Valor a Cobrar (R$)'].sum():,.2f}**")
+                    st.dataframe(df_ad_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
+                else:
+                    st.info("Nenhum paciente AD pendente encontrado.")
+
+            with tab_seg_id:
+                df_id_detalhe = df_id_ad_detalhe_base[df_id_ad_detalhe_base['Is_ID'] == True].copy()
+                if not df_id_detalhe.empty:
+                    df_id_view = df_id_detalhe[[col_atendimento, 'nome do paciente', col_responsavel, 'valor_calculado']].copy()
+                    df_id_view.columns = ['Nº Atendimento', 'Paciente', 'Responsável', 'Valor a Cobrar (R$)']
+                    df_id_view = df_id_view.sort_values(by='Valor a Cobrar (R$)', ascending=False)
+                    st.markdown(f"**Total: {len(df_id_view)} pacientes | Valor: R$ {df_id_view['Valor a Cobrar (R$)'].sum():,.2f}**")
+                    st.dataframe(df_id_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
+                else:
+                    st.info("Nenhum paciente ID pendente encontrado.")
 
         with aba4:
             st.markdown("### 📋 Lista de Pendências Ativas por Orçamento do Paciente")
