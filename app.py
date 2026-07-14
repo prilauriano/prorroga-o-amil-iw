@@ -194,8 +194,13 @@ if arquivos_amil:
         df = pd.concat(lista_dfs_amil, ignore_index=True)
         
         col_justificativa = next((col for col in df.columns if 'justificativa' in col or 'pendencia' in col), 'justificativa pendência')
+        # Coluna específica de "Status Rel. Orçamento" — usada para EXCLUIR registros do processamento
+        # (mesma regra histórica e validada que já funcionava para Prontuário/OPS/Liberados).
+        col_status_rel_orcamento = next((col for col in df.columns if 'rel' in col and ('orcamento' in col or 'orçam' in col or 'orc' in col) and 'tec' not in col), None)
+        if not col_status_rel_orcamento:
+            col_status_rel_orcamento = next((col for col in df.columns if 'status rel' in col or 'rel orç' in col or 'status_rel' in col or 'rel orc' in col), None)
         # Lista com TODAS as colunas de status relacionadas (ex.: "Status Rel.Tec" e "Status Rel. Orçamento"),
-        # pois o "Arquivo não encontrado" pode aparecer em qualquer uma delas.
+        # usada APENAS para exibição/alerta na aba "Alertas de Erro" (pode aparecer em qualquer uma delas).
         cols_status_rel = [col for col in df.columns if 'status rel' in col or 'rel orç' in col or 'status_rel' in col or 'rel orc' in col]
         col_contrato = next((col for col in df.columns if str(col).strip() == 'contrato'), None)
         col_valor = next((col for col in df.columns if 'valor a cobrar' in col or 'valor' in col), 'valor a cobrar')
@@ -285,13 +290,20 @@ if arquivos_amil:
             return ("Robô aguardando input" in just_txt or "Robo aguardando input" in just_txt) and ("Lib. para o Robô input" in status_aut or "Lib. para o Robo input" in status_aut)
         df['É_Robo'] = df.apply(verificar_flag_robo_exata, axis=1)
 
+        # Possui_Erro_Critico: usada para EXCLUIR registros do processamento (Prontuário/OPS/Liberados/etc.).
+        # Mantém a regra restrita à coluna de Orçamento, que é a validada e usada há mais tempo — evita que
+        # um "Arquivo não encontrado" isolado em Status Rel.Tec derrube pendências válidas de outras abas.
+        df['Possui_Erro_Critico'] = df[col_status_rel_orcamento].str.lower().str.contains("arquivo não encontrado|arquivo nao encontrado", na=False) if col_status_rel_orcamento else False
+
+        # Possui_Alerta_Status_Rel: usada APENAS na aba "Alertas de Erro" — verifica TODAS as colunas de
+        # status (Tec e Orçamento), pois o "Arquivo não encontrado" pode aparecer em qualquer uma delas.
         if cols_status_rel:
-            mask_erro_critico = pd.Series(False, index=df.index)
+            mask_alerta_status_rel = pd.Series(False, index=df.index)
             for _c in cols_status_rel:
-                mask_erro_critico = mask_erro_critico | df[_c].str.lower().str.contains("arquivo não encontrado|arquivo nao encontrado", na=False)
-            df['Possui_Erro_Critico'] = mask_erro_critico
+                mask_alerta_status_rel = mask_alerta_status_rel | df[_c].str.lower().str.contains("arquivo não encontrado|arquivo nao encontrado", na=False)
+            df['Possui_Alerta_Status_Rel'] = mask_alerta_status_rel
         else:
-            df['Possui_Erro_Critico'] = False
+            df['Possui_Alerta_Status_Rel'] = False
 
         # --- 📑 LEITURA DA PLANILHA 3 (PACIENTES TO COM EVOLUÇÃO) - USANDO Nº ATENDIMENTO ---
         atendimentos_entregues_planilha3 = set()
@@ -423,7 +435,7 @@ if arquivos_amil:
         df.loc[df['Especialidades Pendentes'] == '', 'Especialidades Pendentes'] = 'Nenhuma pendência técnica apontada'
 
         df['É_RioHome'] = df[col_contrato].str.lower().str.contains('riohome|rio home|rio_home', regex=True).fillna(False) if col_contrato else False
-        df_base_erros = df[df['Possui_Erro_Critico'] == True].copy()
+        df_base_erros = df[df['Possui_Alerta_Status_Rel'] == True].copy()
         df_producao_limpa = df[df['Possui_Erro_Critico'] == False].copy()
 
         df_riohome = df_producao_limpa[df_producao_limpa['É_RioHome'] == True].copy()
@@ -438,6 +450,13 @@ if arquivos_amil:
         
         df_faturamento_geral_sem_robo = df_faturamento_geral[df_faturamento_geral['É_Robo'] == False].copy()
 
+        # --- Normalização auxiliar (sem acento e minúscula) para comparações robustas de texto ---
+        def normalizar_texto_sem_acento(texto):
+            texto = str(texto) if not pd.isna(texto) else ''
+            texto = texto.strip().lower()
+            texto = unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8')
+            return texto
+
         # Tabelas Filtradas
         df_prontuario = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['status aut orç'] == 'Prontuário Pendente') & 
@@ -445,18 +464,20 @@ if arquivos_amil:
             (df_faturamento_geral_sem_robo['Especialidades Pendentes'] != 'Nenhuma pendência técnica apontada')
         ].sort_values(by='valor_calculado', ascending=False) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else pd.DataFrame()
         
+        # OPS Pendente: identificado pelo campo "Justificativa Pendência" contendo o texto "Operação Pendente"
+        # (ignorando acento/caixa), e não mais pelo campo "status aut orç".
+        if col_justificativa in df_faturamento_geral_sem_robo.columns:
+            mask_ops_pendente = df_faturamento_geral_sem_robo[col_justificativa].apply(
+                lambda t: 'operacao pendente' in normalizar_texto_sem_acento(t)
+            )
+        else:
+            mask_ops_pendente = pd.Series(False, index=df_faturamento_geral_sem_robo.index)
+
         df_ops = df_faturamento_geral_sem_robo[
-            (df_faturamento_geral_sem_robo['status aut orç'] == 'OPS Pendente') & 
+            mask_ops_pendente &
             (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == True) &
             (df_faturamento_geral_sem_robo['Especialidades Pendentes'] != 'Nenhuma pendência técnica apontada')
-        ].sort_values(by='valor_calculado', ascending=False) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else pd.DataFrame()
-
-        # --- Normalização auxiliar (sem acento e minúscula) para comparações robustas de texto ---
-        def normalizar_texto_sem_acento(texto):
-            texto = str(texto) if not pd.isna(texto) else ''
-            texto = texto.strip().lower()
-            texto = unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8')
-            return texto
+        ].sort_values(by='valor_calculado', ascending=False)
 
         # --- DETECÇÃO DE PEDIDOS CANCELADOS (coluna "Comentários" do IW) ---
         # Marca True sempre que a palavra "cancelado" aparecer em qualquer parte do texto da coluna
