@@ -479,11 +479,10 @@ if arquivos_amil:
 
         mask_ops_pendente = mask_status_ops | mask_justificativa_ops
 
-        df_ops = df_faturamento_geral_sem_robo[
-            mask_ops_pendente &
-            (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == True) &
-            (df_faturamento_geral_sem_robo['Especialidades Pendentes'] != 'Nenhuma pendência técnica apontada')
-        ].sort_values(by='valor_calculado', ascending=False)
+        # OPS Pendente depende SOMENTE do status/justificativa de operação. Ter (ou não) uma pendência
+        # de setor reconhecida no arquivo de Especialidades é só informação extra (coluna "Especialidades
+        # Pendentes" continua exibida na tabela), não é mais um requisito para aparecer aqui.
+        df_ops = df_faturamento_geral_sem_robo[mask_ops_pendente].sort_values(by='valor_calculado', ascending=False)
 
         # --- DETECÇÃO DE PEDIDOS CANCELADOS (coluna "Comentários" do IW) ---
         # Marca True sempre que a palavra "cancelado" aparecer em qualquer parte do texto da coluna
@@ -1094,22 +1093,7 @@ if arquivos_amil:
                         df_o_view.to_excel(writer, sheet_name='OPS Pendente', index=False)
                     st.download_button(label="📥 Baixar Planilha Estruturada: Pendências da Operação", data=buffer_o.getvalue(), file_name="ops_pendente_estruturado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                     st.dataframe(df_o_view.style.format({'Valor do Paciente (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
-                else:
-                    st.info("Nenhuma pendência de OPS activa.")
-                    with st.expander("🔍 Diagnóstico temporário — ver em qual etapa o filtro está zerando"):
-                        st.write(f"1️⃣ Total em `df_faturamento_geral_sem_robo` (base antes dos filtros de OPS): **{len(df_faturamento_geral_sem_robo)}**")
-                        st.write(f"2️⃣ Bate `status aut orç == 'OPS Pendente'`: **{int(mask_status_ops.sum())}**")
-                        if 'status aut orç' in df_faturamento_geral_sem_robo.columns:
-                            valores_unicos_status = df_faturamento_geral_sem_robo['status aut orç'].value_counts().head(15)
-                            st.write("Valores únicos encontrados em `status aut orç` (top 15):")
-                            st.dataframe(valores_unicos_status)
-                        st.write(f"3️⃣ Bate `Justificativa Pendência` contendo 'Operação Pendente': **{int(mask_justificativa_ops.sum())}**")
-                        if col_justificativa in df_faturamento_geral_sem_robo.columns:
-                            valores_unicos_justificativa = df_faturamento_geral_sem_robo[col_justificativa].value_counts().head(15)
-                            st.write("Valores únicos encontrados em `Justificativa Pendência` (top 15):")
-                            st.dataframe(valores_unicos_justificativa)
-                        st.write(f"4️⃣ Bate (2 OU 3) E `Tem_Pendencia_Setor == True`: **{int((mask_ops_pendente & (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == True)).sum())}**")
-                        st.write(f"5️⃣ Bate tudo acima E `Especialidades Pendentes != 'Nenhuma pendência técnica apontada'` (resultado final): **{len(df_ops)}**")
+                else: st.info("Nenhuma pendência de OPS activa.")
 
         with aba5:
             st.markdown("### 🚀 Pacientes Liberados (Sem Pendências nos Setores)")
