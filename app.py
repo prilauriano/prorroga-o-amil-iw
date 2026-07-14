@@ -464,14 +464,20 @@ if arquivos_amil:
             (df_faturamento_geral_sem_robo['Especialidades Pendentes'] != 'Nenhuma pendência técnica apontada')
         ].sort_values(by='valor_calculado', ascending=False) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else pd.DataFrame()
         
-        # OPS Pendente: identificado pelo campo "Justificativa Pendência" contendo o texto "Operação Pendente"
-        # (ignorando acento/caixa), e não mais pelo campo "status aut orç".
+        # OPS Pendente: identificado por status aut orç == 'OPS Pendente' (regra original)
+        # OU pelo campo "Justificativa Pendência" contendo o texto "Operação Pendente" (ignorando acento/caixa).
+        mask_status_ops = (
+            df_faturamento_geral_sem_robo['status aut orç'] == 'OPS Pendente'
+        ) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else pd.Series(False, index=df_faturamento_geral_sem_robo.index)
+
         if col_justificativa in df_faturamento_geral_sem_robo.columns:
-            mask_ops_pendente = df_faturamento_geral_sem_robo[col_justificativa].apply(
+            mask_justificativa_ops = df_faturamento_geral_sem_robo[col_justificativa].apply(
                 lambda t: 'operacao pendente' in normalizar_texto_sem_acento(t)
             )
         else:
-            mask_ops_pendente = pd.Series(False, index=df_faturamento_geral_sem_robo.index)
+            mask_justificativa_ops = pd.Series(False, index=df_faturamento_geral_sem_robo.index)
+
+        mask_ops_pendente = mask_status_ops | mask_justificativa_ops
 
         df_ops = df_faturamento_geral_sem_robo[
             mask_ops_pendente &
