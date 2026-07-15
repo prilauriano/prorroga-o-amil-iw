@@ -1101,14 +1101,25 @@ if arquivos_amil:
                 df_grafico_final = pd.merge(df_s_filtrado_grafico, df_valores_unicos, left_on=col_s_atend, right_on=col_atendimento, how='inner')
                 df_grafico_final = df_grafico_final.drop_duplicates(subset=[col_s_atend, 'setor_normalizado'])
                 
-                df_grafico_pizza = df_grafico_final.groupby('setor_normalizado')['valor_calculado'].sum().reset_index()
-                df_grafico_pizza.columns = ['Setor Técnico', 'Valor Total Retido']
+                df_grafico_pizza = df_grafico_final.groupby('setor_normalizado').agg(
+                    Valor_Total=('valor_calculado', 'sum'),
+                    Qtd_Pacientes=(col_s_atend, 'nunique')
+                ).reset_index()
+                df_grafico_pizza.columns = ['Setor Técnico', 'Valor Total Retido', 'Qtd Pacientes Pendentes']
                 df_grafico_pizza = df_grafico_pizza[df_grafico_pizza['Valor Total Retido'] > 0].sort_values(by="Valor Total Retido", ascending=False)
                 
                 if not df_grafico_pizza.empty:
                     st.markdown("#### 📊 Distribuição Financeira Total Ativa")
-                    fig_valores = px.bar(df_grafico_pizza, x='Setor Técnico', y='Valor Total Retido', color='Valor Total Retido', color_continuous_scale='Oryel', labels={'Valor Total Retido': 'Valor Retido (R$)'})
-                    fig_valores.update_traces(texttemplate='R$ %{y:,.2f}', textposition='outside')
+                    fig_valores = px.bar(
+                        df_grafico_pizza, x='Setor Técnico', y='Valor Total Retido', color='Valor Total Retido',
+                        color_continuous_scale='Oryel', labels={'Valor Total Retido': 'Valor Retido (R$)'},
+                        custom_data=['Qtd Pacientes Pendentes']
+                    )
+                    fig_valores.update_traces(
+                        texttemplate='R$ %{y:,.2f}<br>%{customdata[0]} pacientes',
+                        textposition='outside',
+                        hovertemplate='<b>%{x}</b><br>Valor Retido: R$ %{y:,.2f}<br>Pacientes Pendentes: %{customdata[0]}<extra></extra>'
+                    )
                     fig_valores.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', margin=dict(t=30, b=10, l=10, r=10), yaxis=dict(tickprefix="R$ ", tickformat=",.2f"))
                     st.plotly_chart(fig_valores, use_container_width=True)
 
