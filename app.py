@@ -226,7 +226,7 @@ if arquivos_amil:
         cols_status_rel = [col for col in df.columns if 'status rel' in col or 'rel orç' in col or 'status_rel' in col or 'rel orc' in col]
         col_contrato = next((col for col in df.columns if str(col).strip() == 'contrato'), None)
         col_valor = next((col for col in df.columns if 'valor a cobrar' in col or 'valor' in col), 'valor a cobrar')
-        col_atendimento = next((col for col in df.columns if 'nr. atendimento' in col or 'nº atendimento' in col or 'nr.atendimento' in col), 'nr. atendimento')
+        col_atendimento = next((col for col in df.columns if 'nr. atendimento' in col or 'nº atendimento' in col or 'nr.atendimento' in col or ('atendimento' in col and 'classific' not in col)), 'nr. atendimento')
         col_classificacao = next((col for col in df.columns if 'classific. atendimento' in col or 'classific.' in col or 'classificacao' in col), 'classific. atendimento')
         col_comentarios = next((col for col in df.columns if 'comentário' in col or 'comentario' in col), None)
         
