@@ -597,8 +597,8 @@ if arquivos_amil:
         if arquivos_setores and len(lista_atendimentos_pendentes_globais) > 0 and not df_s_consolidado.empty and 'setor_normalizado' in df_s_consolidado.columns:
             df_s_vilao = df_s_consolidado[df_s_consolidado[col_s_atend].isin(lista_atendimentos_pendentes_globais)].copy()
             df_s_vilao = df_s_vilao[
-                (df_s_vilao['setor_normalizado'] != "Terapia Ocupacional") &
-                (df_s_vilao[col_s_atend].isin(atendimentos_com_outras_pendencias))
+                (df_s_vilao[col_s_atend].isin(atendimentos_com_outras_pendencias)) |
+                ((df_s_vilao['setor_normalizado'] == "Terapia Ocupacional") & (df_s_vilao[col_s_atend].isin(atendimentos_com_pendencia_to_estrita)))
             ]
             if not df_s_vilao.empty:
                 df_valores_unicos_vilao = df[[col_atendimento, 'valor_calculado']].drop_duplicates()
@@ -1092,7 +1092,10 @@ if arquivos_amil:
                 
             if arquivos_setores and len(lista_atendimentos_visiveis) > 0 and not df_s_consolidado.empty:
                 df_s_filtrado_grafico = df_s_consolidado[df_s_consolidado[col_s_atend].isin(lista_atendimentos_visiveis)].copy()
-                df_s_filtrado_grafico = df_s_filtrado_grafico[(df_s_filtrado_grafico['setor_normalizado'] != "Terapia Ocupacional") & (df_s_filtrado_grafico[col_s_atend].isin(atendimentos_com_outras_pendencias))]
+                df_s_filtrado_grafico = df_s_filtrado_grafico[
+                    (df_s_filtrado_grafico[col_s_atend].isin(atendimentos_com_outras_pendencias)) |
+                    ((df_s_filtrado_grafico['setor_normalizado'] == "Terapia Ocupacional") & (df_s_filtrado_grafico[col_s_atend].isin(atendimentos_com_pendencia_to_estrita)))
+                ]
                 
                 df_valores_unicos = df[[col_atendimento, 'valor_calculado']].drop_duplicates()
                 df_grafico_final = pd.merge(df_s_filtrado_grafico, df_valores_unicos, left_on=col_s_atend, right_on=col_atendimento, how='inner')
