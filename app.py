@@ -470,8 +470,7 @@ if arquivos_amil:
             
             if df_s_ativos_reais:
                 df_s_ativos_df = pd.DataFrame(df_s_ativos_reais)
-                df_s_ativos_df = df_s_ativos_df[df_s_ativos_df['setor_normalizado'] != "Terapia Ocupacional"]
-                
+
                 setores_agrupados = df_s_ativos_df.groupby(col_s_atend)['setor_normalizado'].apply(
                     lambda x: ', '.join(sorted(set(x)))
                 ).reset_index()
