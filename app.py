@@ -959,7 +959,7 @@ if arquivos_amil:
                     pct_max_carga = (max_colab['Quantidade de Pacientes'] / total_pacientes_iw * 100) if total_pacientes_iw > 0 else 0.0
                     
                     st.markdown(f"""<div class="insight-card"><b>👥 Distribuição Operacional de Equipe:</b><br>
-                                <b>{max_colab['Colaborador']}</b> possui a maior carga de faturamento da equipe, representando {pct_max_carga:.1f}% da base. 
+                                <b>{max_colab['Colaborador']}</b> possui a maior carga de PACIENTES da equipe (quantidade), representando {pct_max_carga:.1f}% da base. 
                                 Por outro lado, <b>{min_colab['Colaborador']}</b> concentra a menor carga atual de auditoria.</div>""", unsafe_allow_html=True)
                                 
                     st.markdown(f"""<div class="insight-card"><b>💰 Concentração por Maior Valor Crítico:</b><br>
