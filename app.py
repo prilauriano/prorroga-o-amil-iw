@@ -192,6 +192,28 @@ if arquivos_amil:
             lista_dfs_amil.append(df_temp)
         
         df = pd.concat(lista_dfs_amil, ignore_index=True)
+
+        # --- DETECÇÃO DINÂMICA DA COLUNA DE NOME DO PACIENTE ---
+        # Aceita variações comuns de cabeçalho: "Nome do Paciente", "Nome", "Paciente", "Nome Paciente" etc.
+        # Depois de detectada, a coluna é renomeada internamente para 'nome do paciente' para manter
+        # compatibilidade com todo o restante do código (que referencia esse nome fixo em várias abas).
+        col_paciente_detectado = next((col for col in df.columns if col.strip() == 'nome do paciente'), None)
+        if not col_paciente_detectado:
+            col_paciente_detectado = next((col for col in df.columns if col.strip() == 'nome'), None)
+        if not col_paciente_detectado:
+            col_paciente_detectado = next((col for col in df.columns if col.strip() == 'paciente'), None)
+        if not col_paciente_detectado:
+            col_paciente_detectado = next((col for col in df.columns if 'nome' in col and 'paciente' in col), None)
+        if not col_paciente_detectado:
+            col_paciente_detectado = next((col for col in df.columns if 'paciente' in col), None)
+        if not col_paciente_detectado:
+            col_paciente_detectado = next((col for col in df.columns if col.strip().startswith('nome')), None)
+
+        if col_paciente_detectado and col_paciente_detectado != 'nome do paciente':
+            df = df.rename(columns={col_paciente_detectado: 'nome do paciente'})
+        elif not col_paciente_detectado:
+            # Nenhuma coluna de nome encontrada: cria vazia para evitar KeyError no restante do código.
+            df['nome do paciente'] = ''
         
         col_justificativa = next((col for col in df.columns if 'justificativa' in col or 'pendencia' in col), 'justificativa pendência')
         # Coluna específica de "Status Rel. Orçamento" — usada para EXCLUIR registros do processamento
