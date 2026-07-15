@@ -327,8 +327,11 @@ if arquivos_amil:
         else:
             df['Possui_Alerta_Status_Rel'] = False
 
-        # --- 📑 LEITURA DA PLANILHA 3 (PACIENTES TO COM EVOLUÇÃO) - USANDO Nº ATENDIMENTO ---
+        # --- 📑 LEITURA DA PLANILHA 3 (PACIENTES TO COM EVOLUÇÃO) - USANDO NOME DO PACIENTE ---
+        # O cruzamento passou a ser feito pelo NOME do paciente (e não mais pelo Nº Atendimento),
+        # pois o erro do IW na especialidade de TO pode gerar inconsistência nos números de atendimento.
         atendimentos_entregues_planilha3 = set()
+        nomes_entregues_planilha3 = set()
         if arquivos_to:
             for arq_to in arquivos_to:
                 if arq_to.name.endswith('.csv'):
@@ -344,6 +347,20 @@ if arquivos_amil:
                 if col_atend_to:
                     atendimentos_entregues_planilha3.update(
                         df_to_temp[col_atend_to].dropna().astype(str).str.replace(r'\.0$', '', regex=True).str.strip().unique()
+                    )
+
+                col_nome_to = next((col for col in df_to_temp.columns if col.strip() == 'nome paciente'), None)
+                if not col_nome_to:
+                    col_nome_to = next((col for col in df_to_temp.columns if col.strip() == 'nome do paciente'), None)
+                if not col_nome_to:
+                    col_nome_to = next((col for col in df_to_temp.columns if col.strip() == 'nome'), None)
+                if not col_nome_to:
+                    col_nome_to = next((col for col in df_to_temp.columns if 'nome' in col and 'paciente' in col), None)
+                if not col_nome_to:
+                    col_nome_to = next((col for col in df_to_temp.columns if 'paciente' in col), None)
+                if col_nome_to:
+                    nomes_entregues_planilha3.update(
+                        df_to_temp[col_nome_to].dropna().astype(str).str.strip().str.lower().unique()
                     )
 
         # --- ⚙️ PROCESSAMENTO DA PLANILHA 2 (SETORES TÉCNICOS) ---
@@ -369,6 +386,15 @@ if arquivos_amil:
             col_s_atend = next((c for c in df_s_consolidado.columns if 'nº atendimento' in c or 'nr. atendimento' in c or 'atendimento' in c), None)
             col_s_esp = next((c for c in df_s_consolidado.columns if 'grupo especialidade' in c or 'especialidade' in c), None)
             col_s_template = next((c for c in df_s_consolidado.columns if 'template' in c), None)
+            col_s_nome = next((c for c in df_s_consolidado.columns if c.strip() == 'nome paciente'), None)
+            if not col_s_nome:
+                col_s_nome = next((c for c in df_s_consolidado.columns if c.strip() == 'nome do paciente'), None)
+            if not col_s_nome:
+                col_s_nome = next((c for c in df_s_consolidado.columns if c.strip() == 'nome'), None)
+            if not col_s_nome:
+                col_s_nome = next((c for c in df_s_consolidado.columns if 'nome' in c and 'paciente' in c), None)
+            if not col_s_nome:
+                col_s_nome = next((c for c in df_s_consolidado.columns if 'paciente' in c), None)
             
             if col_s_atend and col_s_template:
                 df_s_consolidado[col_s_atend] = df_s_consolidado[col_s_atend].fillna('').astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
@@ -423,7 +449,7 @@ if arquivos_amil:
         
         def checar_to_bloqueante_final_atend(linha):
             atend = str(linha[col_atendimento])
-            if atend in atendimentos_entregues_planilha3: 
+            if atend in atendimentos_entregues_planilha3:
                 return False
             return atend in atendimentos_com_pendencia_to_estrita
 
