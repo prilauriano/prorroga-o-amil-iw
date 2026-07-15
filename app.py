@@ -480,30 +480,24 @@ if arquivos_amil:
             return texto
 
         # Tabelas Filtradas
+        # ATUALIZAÇÃO (mudança no IW): a coluna 'status aut orç' deixou de ser confiável para diferenciar
+        # Prontuário Pendente x OPS Pendente. A partir de agora:
+        #   - Prontuário Pendente depende SOMENTE da planilha 2 (pendência de setor / Especialidades Pendentes).
+        #   - OPS Pendente depende SOMENTE do campo "Justificativa Pendência" (ver mask_ops_pendente abaixo).
         df_prontuario = df_faturamento_geral_sem_robo[
-            (df_faturamento_geral_sem_robo['status aut orç'] == 'Prontuário Pendente') & 
             (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == True) &
             (df_faturamento_geral_sem_robo['Especialidades Pendentes'] != 'Nenhuma pendência técnica apontada')
-        ].sort_values(by='valor_calculado', ascending=False) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else pd.DataFrame()
-        
-        # OPS Pendente: identificado por status aut orç == 'OPS Pendente' (regra original)
-        # OU pelo campo "Justificativa Pendência" contendo o texto "Operação Pendente" (ignorando acento/caixa).
-        mask_status_ops = (
-            df_faturamento_geral_sem_robo['status aut orç'] == 'OPS Pendente'
-        ) if 'status aut orç' in df_faturamento_geral_sem_robo.columns else pd.Series(False, index=df_faturamento_geral_sem_robo.index)
+        ].sort_values(by='valor_calculado', ascending=False)
 
+        # OPS Pendente: identificado SOMENTE pelo campo "Justificativa Pendência" contendo o texto
+        # "Operação Pendente" (ignorando acento/caixa). Não usa mais 'status aut orç'.
         if col_justificativa in df_faturamento_geral_sem_robo.columns:
-            mask_justificativa_ops = df_faturamento_geral_sem_robo[col_justificativa].apply(
+            mask_ops_pendente = df_faturamento_geral_sem_robo[col_justificativa].apply(
                 lambda t: 'operacao pendente' in normalizar_texto_sem_acento(t)
             )
         else:
-            mask_justificativa_ops = pd.Series(False, index=df_faturamento_geral_sem_robo.index)
+            mask_ops_pendente = pd.Series(False, index=df_faturamento_geral_sem_robo.index)
 
-        mask_ops_pendente = mask_status_ops | mask_justificativa_ops
-
-        # OPS Pendente depende SOMENTE do status/justificativa de operação. Ter (ou não) uma pendência
-        # de setor reconhecida no arquivo de Especialidades é só informação extra (coluna "Especialidades
-        # Pendentes" continua exibida na tabela), não é mais um requisito para aparecer aqui.
         df_ops = df_faturamento_geral_sem_robo[mask_ops_pendente].sort_values(by='valor_calculado', ascending=False)
 
         # --- DETECÇÃO DE PEDIDOS CANCELADOS (coluna "Comentários" do IW) ---
