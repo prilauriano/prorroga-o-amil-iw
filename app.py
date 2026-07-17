@@ -225,20 +225,35 @@ if arquivos_amil:
         # usada APENAS para exibição/alerta na aba "Alertas de Erro" (pode aparecer em qualquer uma delas).
         cols_status_rel = [col for col in df.columns if 'status rel' in col or 'rel orç' in col or 'status_rel' in col or 'rel orc' in col]
         col_contrato = next((col for col in df.columns if str(col).strip() == 'contrato'), None)
-        col_valor = next((col for col in df.columns if 'valor a cobrar' in col or 'valor' in col), 'valor a cobrar')
-        col_atendimento = next((col for col in df.columns if 'nr. atendimento' in col or 'nº atendimento' in col or 'nr.atendimento' in col or ('atendimento' in col and 'classific' not in col)), 'nr. atendimento')
+        col_valor = next((col for col in df.columns if 'valor a cobrar' in col or 'vr. cobrar' in col or 'cobrar' in col), None)
+        if not col_valor:
+            col_valor = next((col for col in df.columns if 'valor' in col), 'valor a cobrar')
+        col_atendimento = next((col for col in df.columns if 'nr. atendimento' in col or 'nº atendimento' in col or 'nr.atendimento' in col or ('atend' in col and 'classific' not in col)), 'nr. atendimento')
         col_classificacao = next((col for col in df.columns if 'classific. atendimento' in col or 'classific.' in col or 'classificacao' in col), 'classific. atendimento')
         col_comentarios = next((col for col in df.columns if 'comentário' in col or 'comentario' in col), None)
+
+        # --- RENOMEIA COLUNAS COM NOME ABREVIADO/NOVO DO IW PARA O NOME CANÔNICO USADO NO RESTO DO CÓDIGO ---
+        col_id_orcam_detectado = next((col for col in df.columns if col.strip() == 'id orçam.'), None)
+        if not col_id_orcam_detectado:
+            col_id_orcam_detectado = next((col for col in df.columns if 'id' in col and ('orç' in col or 'orc' in col)), None)
+        if col_id_orcam_detectado and col_id_orcam_detectado != 'id orçam.':
+            df = df.rename(columns={col_id_orcam_detectado: 'id orçam.'})
+
+        col_guia_tiss_detectado = next((col for col in df.columns if col.strip() == 'nº guia solicitação (tiss)'), None)
+        if not col_guia_tiss_detectado:
+            col_guia_tiss_detectado = next((col for col in df.columns if 'guia' in col and 'tiss' in col), None)
+        if col_guia_tiss_detectado and col_guia_tiss_detectado != 'nº guia solicitação (tiss)':
+            df = df.rename(columns={col_guia_tiss_detectado: 'nº guia solicitação (tiss)'})
         
         # FIXAÇÃO EXATA DA COLUNA DE RESPONSÁVEL DO IW
-        col_responsavel = 'persona resp aut' if 'persona resp aut' in df.columns else ('pessoa resp aut' if 'pessoa resp aut' in df.columns else 'responsavel')
-        if col_responsavel not in df.columns and 'pessoa resp aut' in df.columns:
-            col_responsavel = 'pessoa resp aut'
-        elif col_responsavel not in df.columns:
+        col_responsavel = next((col for col in df.columns if col.strip() in ('persona resp aut', 'pessoa resp aut', 'responsavel', 'resp aut')), None)
+        if not col_responsavel:
+            col_responsavel = next((col for col in df.columns if col.strip() == 'resp orç.'), None)
+        if not col_responsavel:
             col_responsavel = 'pessoa resp aut'
             df[col_responsavel] = ''
         
-        campos_obrigatorios = ['nº guia solicitação (tiss)', 'senha aprovação', 'status aut orç', 'nr. matricula', col_responsavel, col_classificacao, 'nome do paciente', 'id orçam.']
+        campos_obrigatorios = ['nº guia solicitação (tiss)', 'senha aprovação', 'nr. matricula', col_responsavel, col_classificacao, 'nome do paciente', 'id orçam.']
         if col_justificativa in df.columns: campos_obrigatorios.append(col_justificativa)
         if cols_status_rel: campos_obrigatorios.extend(cols_status_rel)
         if col_contrato: campos_obrigatorios.append(col_contrato)
@@ -297,8 +312,7 @@ if arquivos_amil:
 
         def verificar_origem_input(linha):
             just_txt = str(linha[col_justificativa]).lower().strip() if col_justificativa in df.columns else ""
-            status_aut = str(linha['status aut orç']).lower().strip() if 'status aut orç' in df.columns else ""
-            if "operadora: robo" in just_txt or "operadora: robô" in just_txt or "lib. para o robô" in status_aut or "lib. para o robo" in status_aut: 
+            if "operadora: robo" in just_txt or "operadora: robô" in just_txt or "lib. para o robô" in just_txt or "lib. para o robo" in just_txt: 
                 return "Robô"
             elif "operadora: manual" in just_txt: 
                 return "Manual"
@@ -308,8 +322,7 @@ if arquivos_amil:
 
         def verificar_flag_robo_exata(linha):
             just_txt = str(linha[col_justificativa]).strip() if col_justificativa in df.columns else ""
-            status_aut = str(linha['status aut orç']).strip() if 'status aut orç' in df.columns else ""
-            return ("Robô aguardando input" in just_txt or "Robo aguardando input" in just_txt) and ("Lib. para o Robô input" in status_aut or "Lib. para o Robo input" in status_aut)
+            return ("Robô aguardando input" in just_txt or "Robo aguardando input" in just_txt or "Lib. para o Robô input" in just_txt or "Lib. para o Robo input" in just_txt)
         df['É_Robo'] = df.apply(verificar_flag_robo_exata, axis=1)
 
         # Possui_Erro_Critico: usada para EXCLUIR registros do processamento (Prontuário/OPS/Liberados/etc.).
@@ -492,7 +505,7 @@ if arquivos_amil:
             (df_faturamento_geral['É_Robo'] == True) & 
             (df_faturamento_geral['Inserido_Amil'] == False) &
             (df_faturamento_geral['nome do paciente'].str.strip() != "") & 
-            (~df_faturamento_geral['status aut orç'].str.lower().str.contains('implantação|implantacao|operação|operacao', na=False))
+            (~df_faturamento_geral[col_justificativa].str.lower().str.contains('implantação|implantacao|operação|operacao', na=False) if col_justificativa in df_faturamento_geral.columns else True)
         ].copy()
         
         df_faturamento_geral_sem_robo = df_faturamento_geral[df_faturamento_geral['É_Robo'] == False].copy()
@@ -538,21 +551,14 @@ if arquivos_amil:
             termos_excluidos = ['em avaliacao', 'implantacao', 'operacao', 'operadora pendente']
             return any(termo in texto_norm for termo in termos_excluidos)
 
-        # Status vazio ou contendo um dos termos excluídos (comportamento original preservado)
-        if 'status aut orç' in df_faturamento_geral_sem_robo.columns:
-            status_vazio_ou_termo = df_faturamento_geral_sem_robo['status aut orç'].apply(
-                lambda s: normalizar_texto_sem_acento(s) == '' or contem_termo_excluido_liberados(s)
-            )
-        else:
-            status_vazio_ou_termo = False
-
-        # Conteúdo do campo "Justificativa Pendência" (IW) também não pode indicar esses termos
+        # Conteúdo do campo "Justificativa Pendência" (IW) não pode indicar os termos excluídos
+        # (a antiga checagem por 'status aut orç' foi removida — essa coluna não existe mais no IW).
         if col_justificativa in df_faturamento_geral_sem_robo.columns:
             justificativa_com_termo = df_faturamento_geral_sem_robo[col_justificativa].apply(contem_termo_excluido_liberados)
         else:
             justificativa_com_termo = False
 
-        df_faturamento_geral_sem_robo['_status_excluido_liberados'] = status_vazio_ou_termo | justificativa_com_termo
+        df_faturamento_geral_sem_robo['_status_excluido_liberados'] = justificativa_com_termo
 
         df_liberados = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['Inserido_Amil'] == False) & 
@@ -1182,22 +1188,22 @@ if arquivos_amil:
             st.markdown("### 🤖 Fila de Pacientes Encaminhados para Input Automatizado")
             st.markdown(f"**Volumetria Atual do Robô: {len(df_fila_robo)} pacientes na fila.**")
             if len(df_fila_robo) > 0:
-                df_robo_view = df_fila_robo[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', 'status aut orç', 'valor_calculado']].copy()
-                df_robo_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Status Atual', 'Valor a Cobrar (R$)']
+                df_robo_view = df_fila_robo[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', col_justificativa, 'valor_calculado']].copy()
+                df_robo_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Justificativa Pendência', 'Valor a Cobrar (R$)']
                 st.dataframe(df_robo_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
             else: st.info("💡 Nenhum paciente aguardando ou liberado para o robô detectado.")
 
         with aba6:
             st.markdown("### 🏠 Listagem Isolada — Contrato RioHome")
-            df_riohome_view = df_riohome[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', col_responsavel, 'status aut orç', 'valor_calculado']].copy()
-            df_riohome_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Responsável', 'Status Atual IW', 'Valor a Cobrar (R$)']
+            df_riohome_view = df_riohome[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', col_responsavel, col_justificativa, 'valor_calculado']].copy()
+            df_riohome_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Responsável', 'Justificativa Pendência', 'Valor a Cobrar (R$)']
             st.dataframe(df_riohome_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
         with aba7:
             st.markdown("### 🚨 Alertas de Erro: Arquivo Não Encontrado")
             if len(df_base_erros) > 0:
-                colunas_erro = [col_atendimento, 'id orçam.', 'nome do paciente', 'status aut orç', col_responsavel]
-                colunas_visualizacao = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Status Aut Orç', 'Responsável']
+                colunas_erro = [col_atendimento, 'id orçam.', 'nome do paciente', col_justificativa, col_responsavel]
+                colunas_visualizacao = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Justificativa Pendência', 'Responsável']
                 pos_insercao = 3
                 for _c in cols_status_rel:
                     colunas_erro.insert(pos_insercao, _c)
@@ -1216,9 +1222,9 @@ if arquivos_amil:
                 df_cancelados = df[df['Possui_Cancelamento'] == True].copy()
                 if len(df_cancelados) > 0:
                     st.markdown(f"**🚫 Total de Registros Cancelados: {len(df_cancelados)} | Valor Envolvido: R$ {df_cancelados['valor_calculado'].sum():,.2f}**")
-                    colunas_cancelados = [col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', col_responsavel, 'status aut orç', col_comentarios, 'valor_calculado']
+                    colunas_cancelados = [col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', col_responsavel, col_justificativa, col_comentarios, 'valor_calculado']
                     df_cancelados_view = df_cancelados[colunas_cancelados].copy()
-                    df_cancelados_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Responsável', 'Status Atual IW', 'Comentário (IW)', 'Valor a Cobrar (R$)']
+                    df_cancelados_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Responsável', 'Justificativa Pendência', 'Comentário (IW)', 'Valor a Cobrar (R$)']
                     df_cancelados_view = df_cancelados_view.sort_values(by='Valor a Cobrar (R$)', ascending=False)
 
                     buffer_cancelados = io.BytesIO()
