@@ -193,6 +193,17 @@ if arquivos_amil:
         
         df = pd.concat(lista_dfs_amil, ignore_index=True)
 
+        # --- FILTRO POR STATUS DO ATENDIMENTO (Planilha 1 / Pror) ---
+        # Remove da base pacientes que já não precisam de prorrogação (Alta, Cancelado,
+        # Em avaliação etc.), mantendo apenas "Em atendimento". Sem esse filtro, os totais
+        # de "Total de Pacientes" e "Quantidade de Pendentes" ficavam inflados com pacientes
+        # que não estão mais ativos.
+        col_status_atendimento = next((col for col in df.columns if col.strip() == 'status'), None)
+        if col_status_atendimento:
+            df = df[
+                df[col_status_atendimento].fillna('').astype(str).str.strip().str.lower() == 'em atendimento'
+            ].reset_index(drop=True)
+
         # --- DETECÇÃO DINÂMICA DA COLUNA DE NOME DO PACIENTE ---
         # Aceita variações comuns de cabeçalho: "Nome do Paciente", "Nome", "Paciente", "Nome Paciente" etc.
         # Depois de detectada, a coluna é renomeada internamente para 'nome do paciente' para manter
@@ -439,7 +450,8 @@ if arquivos_amil:
                     atend_p2 = str(linha[col_s_atend])
                     setor = str(linha['setor_normalizado'])
                     if setor == "Terapia Ocupacional":
-                        if atend_p2 in atendimentos_entregues_planilha3:
+                        nome_p2 = str(linha[col_s_nome]).strip().lower() if col_s_nome else ''
+                        if atend_p2 in atendimentos_entregues_planilha3 or (nome_p2 and nome_p2 in nomes_entregues_planilha3):
                             return "RESOLVIDO_TO"
                         else:
                             return "TO (Pendência Ativa)"
@@ -462,7 +474,8 @@ if arquivos_amil:
         
         def checar_to_bloqueante_final_atend(linha):
             atend = str(linha[col_atendimento])
-            if atend in atendimentos_entregues_planilha3:
+            nome = str(linha['nome do paciente_limpo']).strip().lower()
+            if atend in atendimentos_entregues_planilha3 or (nome and nome in nomes_entregues_planilha3):
                 return False
             return atend in atendimentos_com_pendencia_to_estrita
 
@@ -567,11 +580,13 @@ if arquivos_amil:
         ].copy().sort_values(by='valor_calculado', ascending=False)
 
         # Métricas globais
-        total_pacientes_iw = len(df)
+        # Total de Pacientes = atendimentos únicos (e não linhas/orçamentos, já que um mesmo
+        # atendimento pode ter mais de um PAD/orçamento a prorrogar).
+        total_pacientes_iw = df[col_atendimento].nunique()
         inseridos_count = df_producao_limpa['Inserido_Amil'].sum()
         valor_total_todos_pacientes = df['valor_calculado'].sum()
         valor_total_pendencias_setores = df[df['Tem_Pendencia_Setor'] == True]['valor_calculado'].sum()
-        total_pendentes_input_real = (df['Inserido_Amil'] == False).sum()
+        total_pendentes_input_real = df.loc[df['Inserido_Amil'] == False, col_atendimento].nunique()
         
         # Volumetria do Robô baseada nas marcas internas do arquivo
         inputs_robo_total = 0
