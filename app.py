@@ -992,6 +992,7 @@ if arquivos_amil:
             if col_responsavel in df.columns:
                 colaboradores_unicos = df[df[col_responsavel].fillna('').str.strip() != ''][col_responsavel].unique()
                 linhas_gestao = []
+                linhas_pendentes_gestao = []
                 excecoes_setor = ["IMPLANTAÇÃO", "IMPLANTACAO", "PRORROGAÇÃO", "PRORROGACAO", "OPERAÇÃO", "OPERACAO"]
                 
                 for colab in colaboradores_unicos:
@@ -1027,6 +1028,17 @@ if arquivos_amil:
                         "Quantitativo Total de Pacientes": total_paci,
                         "Valor Total dos Pacientes": valor_total
                     })
+
+                    # --- LÓGICA DE PENDÊNCIAS POR COLABORADOR ---
+                    df_pend_colab = df_filtrado_colab[df_filtrado_colab['Inserido_Amil'] == False]
+                    paci_pendentes = len(df_pend_colab)
+                    valor_pendente = df_pend_colab['valor_calculado'].sum()
+
+                    linhas_pendentes_gestao.append({
+                        "Colaborador": colab,
+                        "Pacientes Pendentes": paci_pendentes,
+                        "Valor Pendente de Imputação": valor_pendente
+                    })
                 
                 if linhas_gestao:
                     df_gestao_final = pd.DataFrame(linhas_gestao)
@@ -1036,6 +1048,12 @@ if arquivos_amil:
                         "Quantitativo Total de Pacientes", "Valor Total dos Pacientes"
                     ]]
                     st.dataframe(df_gestao_final.style.format({'Valor Total dos Pacientes': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
+
+                    st.markdown("---")
+                    st.markdown("### ⏳ Pendências de Imputação e Carteira Parada por Colaborador")
+                    df_pend_final = pd.DataFrame(linhas_pendentes_gestao)
+                    df_pend_final = df_pend_final.sort_values(by="Valor Pendente de Imputação", ascending=False)
+                    st.dataframe(df_pend_final.style.format({'Valor Pendente de Imputação': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
                 else:
                     st.info("Nenhum colaborador elegível localizado com os parâmetros aplicados.")
 
