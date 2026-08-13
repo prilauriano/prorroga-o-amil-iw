@@ -193,21 +193,10 @@ if arquivos_amil:
         
         df = pd.concat(lista_dfs_amil, ignore_index=True)
 
-        # --- FILTRO POR STATUS DO ATENDIMENTO (Planilha 1 / Pror) ---
-        # Remove da base pacientes que já não precisam de prorrogação (Alta, Cancelado,
-        # Em avaliação etc.), mantendo apenas "Em atendimento". Sem esse filtro, os totais
-        # de "Total de Pacientes" e "Quantidade de Pendentes" ficavam inflados com pacientes
-        # que não estão mais ativos.
+        # --- FILTRO POR STATUS DO ATENDIMENTO (Planilha 1 / Pror) — REMOVIDO A PEDIDO DO USUÁRIO ---
         col_status_atendimento = next((col for col in df.columns if col.strip() == 'status'), None)
-        if col_status_atendimento:
-            df = df[
-                df[col_status_atendimento].fillna('').astype(str).str.strip().str.lower() == 'em atendimento'
-            ].reset_index(drop=True)
 
         # --- DETECÇÃO DINÂMICA DA COLUNA DE NOME DO PACIENTE ---
-        # Aceita variações comuns de cabeçalho: "Nome do Paciente", "Nome", "Paciente", "Nome Paciente" etc.
-        # Depois de detectada, a coluna é renomeada internamente para 'nome do paciente' para manter
-        # compatibilidade com todo o restante do código (que referencia esse nome fixo em várias abas).
         col_paciente_detectado = next((col for col in df.columns if col.strip() == 'nome do paciente'), None)
         if not col_paciente_detectado:
             col_paciente_detectado = next((col for col in df.columns if col.strip() == 'nome'), None)
@@ -223,17 +212,13 @@ if arquivos_amil:
         if col_paciente_detectado and col_paciente_detectado != 'nome do paciente':
             df = df.rename(columns={col_paciente_detectado: 'nome do paciente'})
         elif not col_paciente_detectado:
-            # Nenhuma coluna de nome encontrada: cria vazia para evitar KeyError no restante do código.
             df['nome do paciente'] = ''
         
         col_justificativa = next((col for col in df.columns if 'justificativa' in col or 'pendencia' in col), 'justificativa pendência')
-        # Coluna específica de "Status Rel. Orçamento" — usada para EXCLUIR registros do processamento
-        # (mesma regra histórica e validada que já funcionava para Prontuário/OPS/Liberados).
         col_status_rel_orcamento = next((col for col in df.columns if 'rel' in col and ('orcamento' in col or 'orçam' in col or 'orc' in col) and 'tec' not in col), None)
         if not col_status_rel_orcamento:
             col_status_rel_orcamento = next((col for col in df.columns if 'status rel' in col or 'rel orç' in col or 'status_rel' in col or 'rel orc' in col), None)
-        # Lista com TODAS as colunas de status relacionadas (ex.: "Status Rel.Tec" e "Status Rel. Orçamento"),
-        # usada APENAS para exibição/alerta na aba "Alertas de Erro" (pode aparecer em qualquer uma delas).
+        
         cols_status_rel = [col for col in df.columns if 'status rel' in col or 'rel orç' in col or 'status_rel' in col or 'rel orc' in col]
         col_contrato = next((col for col in df.columns if str(col).strip() == 'contrato'), None)
         col_valor = next((col for col in df.columns if 'valor a cobrar' in col or 'vr. cobrar' in col or 'cobrar' in col), None)
@@ -320,11 +305,6 @@ if arquivos_amil:
         ) if col_classificacao in df.columns else 'Outros'
 
         # --- VALIDAÇÃO ESTRITA DO Nº GUIA TISS PARA DEFINIR "INSERIDO NA AMIL" ---
-        # Regra de negócio: um paciente só é considerado IMPUTADO quando o campo Nº Guia TISS
-        # estiver preenchido com EXATAMENTE 9 dígitos numéricos (padrão: "516805892"), sem
-        # letras, espaços, pontuação ou qualquer outro caractere. Qualquer valor vazio, com
-        # texto (ex.: "AE", "ENVIADOVIAEMAIL"), ou com quantidade de dígitos diferente de 9
-        # mantém o paciente como PENDENTE de imputação.
         if 'nº guia solicitação (tiss)' in df.columns:
             df['nº guia solicitação (tiss)'] = df['nº guia solicitação (tiss)'].fillna('').astype(str).str.strip()
             df['Inserido_Amil'] = df['nº guia solicitação (tiss)'].str.match(r'^\d{9}$')
@@ -332,10 +312,10 @@ if arquivos_amil:
             df['Inserido_Amil'] = False
 
         def verificar_origem_input(linha):
-            just_txt = str(linha[col_justificativa]).lower().strip() if col_justificativa in df.columns else ""
-            if "operadora: robo" in just_txt or "operadora: robô" in just_txt or "lib. para o robô" in just_txt or "lib. para o robo" in just_txt: 
+            just_txt = str(linha[col_justificativa]).strip() if col_justificativa in df.columns else ""
+            if just_txt == "Operadora: Robô - Em analise": 
                 return "Robô"
-            elif "operadora: manual" in just_txt: 
+            elif just_txt == "Ops: Manual - Em analise": 
                 return "Manual"
             return "Outro"
 
@@ -346,13 +326,8 @@ if arquivos_amil:
             return ("Robô aguardando input" in just_txt or "Robo aguardando input" in just_txt or "Lib. para o Robô input" in just_txt or "Lib. para o Robo input" in just_txt)
         df['É_Robo'] = df.apply(verificar_flag_robo_exata, axis=1)
 
-        # Possui_Erro_Critico: usada para EXCLUIR registros do processamento (Prontuário/OPS/Liberados/etc.).
-        # Mantém a regra restrita à coluna de Orçamento, que é a validada e usada há mais tempo — evita que
-        # um "Arquivo não encontrado" isolado em Status Rel.Tec derrube pendências válidas de outras abas.
         df['Possui_Erro_Critico'] = df[col_status_rel_orcamento].str.lower().str.contains("arquivo não encontrado|arquivo nao encontrado", na=False) if col_status_rel_orcamento else False
 
-        # Possui_Alerta_Status_Rel: usada APENAS na aba "Alertas de Erro" — verifica TODAS as colunas de
-        # status (Tec e Orçamento), pois o "Arquivo não encontrado" pode aparecer em qualquer uma delas.
         if cols_status_rel:
             mask_alerta_status_rel = pd.Series(False, index=df.index)
             for _c in cols_status_rel:
@@ -362,8 +337,6 @@ if arquivos_amil:
             df['Possui_Alerta_Status_Rel'] = False
 
         # --- 📑 LEITURA DA PLANILHA 3 (PACIENTES TO COM EVOLUÇÃO) - USANDO NOME DO PACIENTE ---
-        # O cruzamento passou a ser feito pelo NOME do paciente (e não mais pelo Nº Atendimento),
-        # pois o erro do IW na especialidade de TO pode gerar inconsistência nos números de atendimento.
         atendimentos_entregues_planilha3 = set()
         nomes_entregues_planilha3 = set()
         if arquivos_to:
@@ -421,13 +394,6 @@ if arquivos_amil:
                 lista_dfs_setores.append(df_s_temp)
             
             df_s_consolidado = pd.concat(lista_dfs_setores, ignore_index=True)
-            # DETECÇÃO DA COLUNA DE ATENDIMENTO NA PLANILHA 2 (Setores/Especialidades):
-            # Prioriza correspondências EXATAS de cabeçalhos conhecidos de "Nº de Atendimento"
-            # (incluindo a forma abreviada "Nr. Atend."/"Nº Atend." usada pelo IW) antes de cair
-            # num fallback genérico por substring. O fallback genérico antigo ('atendimento' in c)
-            # capturava incorretamente colunas como "Dt Ini Atendimento" (uma coluna de DATA),
-            # o que quebrava todo o cruzamento de pendências por setor (ex.: Psicologia) e fazia
-            # pacientes com pendência real aparecerem como liberados no dashboard.
             col_s_atend = next((c for c in df_s_consolidado.columns if c.strip() in ('nº atendimento', 'nr. atendimento', 'nr. atend.', 'nº atend.', 'nr.atendimento')), None)
             if not col_s_atend:
                 col_s_atend = next((c for c in df_s_consolidado.columns if 'nº atendimento' in c or 'nr. atendimento' in c or 'nr.atendimento' in c or 'nr. atend' in c or 'nº atend' in c), None)
@@ -557,18 +523,11 @@ if arquivos_amil:
             texto = unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('utf-8')
             return texto
 
-        # Tabelas Filtradas
-        # ATUALIZAÇÃO (mudança no IW): a coluna 'status aut orç' deixou de ser confiável para diferenciar
-        # Prontuário Pendente x OPS Pendente. A partir de agora:
-        #   - Prontuário Pendente depende SOMENTE da planilha 2 (pendência de setor / Especialidades Pendentes).
-        #   - OPS Pendente depende SOMENTE do campo "Justificativa Pendência" (ver mask_ops_pendente abaixo).
         df_prontuario = df_faturamento_geral_sem_robo[
             (df_faturamento_geral_sem_robo['Tem_Pendencia_Setor'] == True) &
             (df_faturamento_geral_sem_robo['Especialidades Pendentes'] != 'Nenhuma pendência técnica apontada')
         ].sort_values(by='valor_calculado', ascending=False)
 
-        # OPS Pendente: identificado SOMENTE pelo campo "Justificativa Pendência" contendo o texto
-        # "Operação Pendente" (ignorando acento/caixa). Não usa mais 'status aut orç'.
         if col_justificativa in df_faturamento_geral_sem_robo.columns:
             mask_ops_pendente = df_faturamento_geral_sem_robo[col_justificativa].apply(
                 lambda t: 'operacao pendente' in normalizar_texto_sem_acento(t)
@@ -578,9 +537,6 @@ if arquivos_amil:
 
         df_ops = df_faturamento_geral_sem_robo[mask_ops_pendente].sort_values(by='valor_calculado', ascending=False)
 
-        # --- DETECÇÃO DE PEDIDOS CANCELADOS (coluna "Comentários" do IW) ---
-        # Marca True sempre que a palavra "cancelado" aparecer em qualquer parte do texto da coluna
-        # Comentários, ignorando acentuação e caixa (ex.: "Cancelado | Sequência 1 | ...").
         if col_comentarios and col_comentarios in df.columns:
             df['Possui_Cancelamento'] = df[col_comentarios].apply(lambda t: 'cancelado' in normalizar_texto_sem_acento(t))
         else:
@@ -591,8 +547,6 @@ if arquivos_amil:
             termos_excluidos = ['em avaliacao', 'implantacao', 'operacao', 'operadora pendente']
             return any(termo in texto_norm for termo in termos_excluidos)
 
-        # Conteúdo do campo "Justificativa Pendência" (IW) não pode indicar os termos excluídos
-        # (a antiga checagem por 'status aut orç' foi removida — essa coluna não existe mais no IW).
         if col_justificativa in df_faturamento_geral_sem_robo.columns:
             justificativa_com_termo = df_faturamento_geral_sem_robo[col_justificativa].apply(contem_termo_excluido_liberados)
         else:
@@ -607,20 +561,18 @@ if arquivos_amil:
         ].copy().sort_values(by='valor_calculado', ascending=False)
 
         # Métricas globais
-        # Total de Pacientes = atendimentos únicos (e não linhas/orçamentos, já que um mesmo
-        # atendimento pode ter mais de um PAD/orçamento a prorrogar).
-        total_pacientes_iw = df[col_atendimento].nunique()
+        total_pacientes_iw = len(df)
         inseridos_count = df_producao_limpa['Inserido_Amil'].sum()
         valor_total_todos_pacientes = df['valor_calculado'].sum()
         valor_total_pendencias_setores = df[df['Tem_Pendencia_Setor'] == True]['valor_calculado'].sum()
         total_pendentes_input_real = df.loc[df['Inserido_Amil'] == False, col_atendimento].nunique()
         
-        # Volumetria do Robô baseada nas marcas internas do arquivo
+        # Volumetria do Robô e Manual baseada na coluna de justificativa
         inputs_robo_total = 0
         inputs_manual_total = 0
         if col_justificativa in df.columns:
-            inputs_robo_total = (df[col_justificativa].fillna('').str.strip() == "Operadora: Robô - Em analise").sum()
-            inputs_manual_total = (df[col_justificativa].fillna('').str.strip() == "Operadora: Manual - Em analise").sum()
+            inputs_robo_total = (df[col_justificativa].fillna('').astype(str).str.strip() == "Operadora: Robô - Em analise").sum()
+            inputs_manual_total = (df[col_justificativa].fillna('').astype(str).str.strip() == "Ops: Manual - Em analise").sum()
         total_inputs_calculados = inputs_robo_total + inputs_manual_total
 
         # --- CONFIGURAÇÃO LATERAL DE METAS (REQUISITO 14) ---
@@ -632,9 +584,7 @@ if arquivos_amil:
             st.session_state.meta_valor = st.number_input("Meta Máxima de Valor Pendente (R$)", min_value=0.0, value=st.session_state.meta_valor)
             horario_previsto = st.text_input("Horário previsto para conclusão", value="18:00")
 
-        # --- IDENTIFICAÇÃO DO SETOR "VILÃO" (maior concentração financeira de pendência técnica) ---
-        # Usa exatamente a MESMA base de atendimentos do gráfico "Distribuição Financeira Total Ativa"
-        # da aba "Lista de Pendências" (Prontuário Pendente + OPS Pendente), para não divergir entre telas.
+        # --- IDENTIFICAÇÃO DO SETOR "VILÃO" ---
         lista_atendimentos_pendentes_globais = []
         if not df_prontuario.empty: lista_atendimentos_pendentes_globais.extend(df_prontuario[col_atendimento].tolist())
         if not df_ops.empty: lista_atendimentos_pendentes_globais.extend(df_ops[col_atendimento].tolist())
@@ -657,11 +607,10 @@ if arquivos_amil:
                     linha_vilao = df_ranking_setor_vilao.iloc[0]
                     setor_vilao = linha_vilao['setor_normalizado']
                     valor_vilao = linha_vilao['valor_calculado']
-                    # Percentual calculado sobre o mesmo total exibido no gráfico da Lista de Pendências
                     valor_total_grafico_pendencias = df_ranking_setor_vilao['valor_calculado'].sum()
                     pct_vilao_do_total = (valor_vilao / valor_total_grafico_pendencias * 100) if valor_total_grafico_pendencias > 0 else 0.0
 
-        # --- RISCO DE NÃO CONCLUIR ATÉ O HORÁRIO ALVO (usa a mesma lógica de velocidade da Previsão Inteligente) ---
+        # --- RISCO DE NÃO CONCLUIR ATÉ O HORÁRIO ALVO ---
         risco_prazo = False
         mensagem_prazo = ""
         if len(st.session_state.historico_coletas_df) >= 2:
@@ -699,11 +648,9 @@ if arquivos_amil:
         ])
         
         with aba1:
-            # --- 14. SEMÁFORO INTELIGENTE (RENDERIZADO NO TOPO) ---
             pct_conclusao_atual = (inseridos_count / total_pacientes_iw * 100) if total_pacientes_iw > 0 else 0.0
             pct_automacao_atual = (inputs_robo_total / total_inputs_calculados * 100) if total_inputs_calculados > 0 else 0.0
             
-            # Lógica de Classificação das Cores do Alerta
             motivos_alerta = []
             if pct_conclusao_atual < st.session_state.meta_conclusao: motivos_alerta.append("Conclusão abaixo da meta")
             if total_pendentes_input_real > st.session_state.meta_pendencias: motivos_alerta.append("Volume de pendências acima do limite")
@@ -729,7 +676,6 @@ if arquivos_amil:
                 status_titulo = f"🔴 VERMELHO — {setor_vilao if setor_vilao else 'Operação crítica'}"
                 status_mensagem = "Recomenda-se atuação imediata da equipe! Multiplos gargalos de retenção técnica ativos."
                 
-            # Determinação da Tendência Baseada no Histórico de Sessão
             tendencia_txt = "➡️ Estável"
             if len(st.session_state.historico_coletas_df) >= 2:
                 ultimo_p = st.session_state.historico_coletas_df.iloc[-1]["Quantidade Pendentes"]
@@ -737,12 +683,10 @@ if arquivos_amil:
                 if ultimo_p < penultimo_p: tendencia_txt = "📈 Melhorando (Reduzindo bloqueos)"
                 elif ultimo_p > penultimo_p: tendencia_txt = "📉 Piorando (Acúmulo de travas)"
 
-            # Linha extra do card: identifica o setor "vilão" (maior concentração financeira de pendência)
             linha_vilao_html = ""
             if setor_vilao:
                 linha_vilao_html = f"<br><small>🎯 <b>Principal gargalo:</b> {setor_vilao} — R$ {valor_vilao:,.2f} ({pct_vilao_do_total:.1f}% do valor total pendente)</small>"
 
-            # Linha extra do card: projeção de conclusão frente ao horário alvo
             linha_prazo_html = ""
             if mensagem_prazo:
                 linha_prazo_html = f"<br><small>{mensagem_prazo}</small>"
@@ -765,7 +709,6 @@ if arquivos_amil:
             card3.metric("Percentual de Conclusão", f"{pct_conclusao_atual:.2f}%", delta=f"{inseridos_count} imputados", delta_color="off")
             card4.metric("Valor Total Pendente", f"R$ {valor_total_pendencias_setores:,.2f}")
             
-            # Contagem dinâmica de colaboradores qualificados
             cont_colaboradores_cards = 0
             if col_responsavel in df.columns:
                 colab_filtrados_cards = [c for c in df[col_responsavel].unique() if str(c).strip() != '' and not any(exc in str(c).upper() for exc in ["IMPLANTAÇÃO", "IMPLANTACAO", "PRORROGAÇÃO", "PRORROGACAO", "OPERAÇÃO", "OPERACAO"])]
@@ -810,7 +753,6 @@ if arquivos_amil:
                 st.markdown("### ⏱️ Previsão Inteligente de Conclusão")
                 try:
                     h_df = st.session_state.historico_coletas_df.copy()
-                    # Mapeamento do tempo aproximado de delta entre coletas
                     h_df['timestamp'] = pd.to_datetime(h_df['Data da Coleta'] + ' ' + h_df['Hora da Coleta'], format='%d/%m/%Y %H:%M:%S')
                     delta_tempo = (h_df['timestamp'].iloc[-1] - h_df['timestamp'].iloc[0]).total_seconds() / 3600.0
                     
@@ -840,11 +782,10 @@ if arquivos_amil:
                 except Exception as e:
                     st.info("Aguardando mais variações cronológicas de registros de coletas para firmar velocidades.")
 
-            # --- GRÁFICOS DE PRODUTIVIDADE OPERACIONAL (REQUISITOS 3, 4, 5, 6) ---
+            # --- GRÁFICOS DE PRODUTIVIDADE OPERACIONAL ---
             st.markdown("---")
             st.markdown("### 📊 Gráficos de Produtividade e Carga de Trabalho")
             
-            # Coleta de dados dos colaboradores para os rankings
             linhas_produtividade = []
             if col_responsavel in df.columns:
                 colaboradores_unicos = df[df[col_responsavel].fillna('').str.strip() != ''][col_responsavel].unique()
@@ -898,7 +839,7 @@ if arquivos_amil:
                 fig_pizza.update_layout(margin=dict(t=20, b=20, l=20, r=20))
                 st.plotly_chart(fig_pizza, use_container_width=True)
 
-            # --- RELATÓRIO ANALÍTICO DA EQUIPE COM PERCENTUAIS (REQUISITO 2) ---
+            # --- RELATÓRIO ANALÍTICO DA EQUIPE COM PERCENTUAIS ---
             st.markdown("---")
             st.markdown("### 👤 Relatório Analítico Complementar da Equipe")
             if col_responsavel in df.columns and not df_prod_graficos.empty:
@@ -910,8 +851,8 @@ if arquivos_amil:
                     p_id = df_c_filtro['Is_ID'].sum()
                     p_ad = df_c_filtro['Is_AD'].sum()
                     
-                    imp_r = (df_c_filtro[col_justificativa].fillna('').str.strip() == "Operadora: Robô - Em analise").sum() if col_justificativa in df.columns else 0
-                    imp_m = (df_c_filtro[col_justificativa].fillna('').str.strip() == "Operadora: Manual - Em analise").sum() if col_justificativa in df.columns else 0
+                    imp_r = (df_c_filtro[col_justificativa].fillna('').astype(str).str.strip() == "Operadora: Robô - Em analise").sum() if col_justificativa in df_c_filtro.columns else 0
+                    imp_m = (df_c_filtro[col_justificativa].fillna('').astype(str).str.strip() == "Ops: Manual - Em analise").sum() if col_justificativa in df_c_filtro.columns else 0
                     soma_inputs = imp_r + imp_m
                     
                     pct_base = (r_gc["Quantidade de Pacientes"] / total_pacientes_iw * 100) if total_pacientes_iw > 0 else 0.0
@@ -938,11 +879,10 @@ if arquivos_amil:
                     'Percentual Manual (%)': '{:.2f}%'
                 }), use_container_width=True, hide_index=True)
 
-            # --- 7. HISTÓRICO DAS COLETAS (TABELA ACUMULADA) ---
+            # --- HISTÓRICO DAS COLETAS ---
             st.markdown("---")
             st.markdown("### 📋 Histórico das Coletas Gravadas")
             
-            # Filtros unificados do histórico (Requisito 11)
             if not st.session_state.historico_coletas_df.empty:
                 col_f1, col_f2, col_f3 = st.columns(3)
                 with col_f1: f_ciclo = st.multiselect("Filtrar Ciclo:", options=st.session_state.historico_coletas_df["Ciclo de Prorrogação"].unique(), default=st.session_state.historico_coletas_df["Ciclo de Prorrogação"].unique())
@@ -956,7 +896,6 @@ if arquivos_amil:
                 ]
                 st.dataframe(df_historico_filtrado, use_container_width=True, hide_index=True)
                 
-                # --- GRÁFICOS HISTÓRICOS DE EVOLUÇÃO (REQUISITOS 8, 9, 10) ---
                 df_historico_filtrado['Data_Hora_Eixo'] = df_historico_filtrado['Data da Coleta'] + " " + df_historico_filtrado['Hora da Coleta']
                 
                 st.markdown("#### 📈 Linhas de Tendência Histórica")
@@ -976,11 +915,10 @@ if arquivos_amil:
             else:
                 st.info("Utilize o botão acima para registrar a primeira linha de coleta e disparar os gráficos evolutivos de linha.")
 
-            # --- 13. INSIGHTS AUTOMÁTICOS DA COLETA & RECOMENDAÇÕES ---
+            # --- INSIGHTS AUTOMÁTICOS DA COLETA & RECOMENDAÇÕES ---
             st.markdown("---")
             st.markdown("### 📊 Insights Automáticos da Coleta Ativa")
             
-            # Análise automatizada com os dados reais
             total_ad_ins = df['Is_AD'].sum()
             total_id_ins = df['Is_ID'].sum()
             soma_ad_id = total_ad_ins + total_id_ins
@@ -1015,7 +953,6 @@ if arquivos_amil:
                 else:
                     st.info("Carregue uma base com auditores definidos no IW para extrair volumes individuais de liderança.")
 
-            # Insights de Delta Comparativo Histórico
             if len(st.session_state.historico_coletas_df) >= 2:
                 st.markdown("#### 📈 Variações em Relação à Coleta Anterior")
                 ultimo_reg = st.session_state.historico_coletas_df.iloc[-1]
@@ -1032,7 +969,6 @@ if arquivos_amil:
                     if dif_valor >= 0: st.success(f"💸 O valor pendente total foi reduzido em R$ {dif_valor:,.2f} em relação ao último ponto.")
                     else: st.warning(f"⚠️ O montante financeiro retido cresceu R$ {abs(dif_valor):,.2f} com novas pendências técnicas.")
 
-            # --- RECOMENDAÇÕES AUTOMÁTICAS ---
             st.markdown("#### 💡 Diretrizes Operacionais Recomendadas")
             if not df_prod_graficos.empty:
                 max_p = df_prod_graficos["Quantidade de Pacientes"].max()
@@ -1067,11 +1003,11 @@ if arquivos_amil:
                     
                     inputs_robo = 0
                     if col_justificativa in df_filtrado_colab.columns:
-                        inputs_robo = (df_filtrado_colab[col_justificativa].fillna('').str.strip() == "Operadora: Robô - Em analise").sum()
+                        inputs_robo = (df_filtrado_colab[col_justificativa].fillna('').astype(str).str.strip() == "Operadora: Robô - Em analise").sum()
                         
                     inputs_manuais = 0
                     if col_justificativa in df_filtrado_colab.columns:
-                        inputs_manuais = (df_filtrado_colab[col_justificativa].fillna('').str.strip() == "Operadora: Manual - Em analise").sum()
+                        inputs_manuais = (df_filtrado_colab[col_justificativa].fillna('').astype(str).str.strip() == "Ops: Manual - Em analise").sum()
                     
                     total_paci = len(df_filtrado_colab)
                     valor_total = df_filtrado_colab['valor_calculado'].sum()
@@ -1205,8 +1141,6 @@ if arquivos_amil:
             else:
                 st.markdown(f"**🔥 Total Prontos para Input: {len(df_liberados)} | Valor de Giro Rápido: R$ {df_liberados['valor_calculado'].sum():,.2f}**")
 
-                # Campo "Justificativa Pendência": exibição informativa exclusiva desta planilha,
-                # copiado integralmente da coluna do IW, sem alterações, resumos ou interpretações.
                 colunas_liberados = [col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento']
                 nomes_colunas_liberados = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo Atendimento']
 
