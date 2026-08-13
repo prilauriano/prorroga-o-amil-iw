@@ -319,7 +319,17 @@ if arquivos_amil:
             lambda x: 'ID (Internação Domiciliar)' if str(x).strip().upper().startswith('ID') else ('AD (Atenção Domiciliar)' if str(x).strip().upper().startswith('AD') else 'Outros')
         ) if col_classificacao in df.columns else 'Outros'
 
-        df['Inserido_Amil'] = df['nº guia solicitação (tiss)'].str.isnumeric() if 'nº guia solicitação (tiss)' in df.columns else False
+        # --- VALIDAÇÃO ESTRITA DO Nº GUIA TISS PARA DEFINIR "INSERIDO NA AMIL" ---
+        # Regra de negócio: um paciente só é considerado IMPUTADO quando o campo Nº Guia TISS
+        # estiver preenchido com EXATAMENTE 9 dígitos numéricos (padrão: "516805892"), sem
+        # letras, espaços, pontuação ou qualquer outro caractere. Qualquer valor vazio, com
+        # texto (ex.: "AE", "ENVIADOVIAEMAIL"), ou com quantidade de dígitos diferente de 9
+        # mantém o paciente como PENDENTE de imputação.
+        if 'nº guia solicitação (tiss)' in df.columns:
+            df['nº guia solicitação (tiss)'] = df['nº guia solicitação (tiss)'].fillna('').astype(str).str.strip()
+            df['Inserido_Amil'] = df['nº guia solicitação (tiss)'].str.match(r'^\d{9}$')
+        else:
+            df['Inserido_Amil'] = False
 
         def verificar_origem_input(linha):
             just_txt = str(linha[col_justificativa]).lower().strip() if col_justificativa in df.columns else ""
@@ -367,7 +377,11 @@ if arquivos_amil:
                     df_to_temp = pd.read_excel(arq_to)
                 df_to_temp.columns = df_to_temp.columns.str.strip().str.lower()
                 
-                col_atend_to = next((col for col in df_to_temp.columns if 'nº atendimento' in col or 'nr. atendimento' in col or 'atendimento' in col), None)
+                col_atend_to = next((col for col in df_to_temp.columns if col.strip() in ('nº atendimento', 'nr. atendimento', 'nr. atend.', 'nº atend.')), None)
+                if not col_atend_to:
+                    col_atend_to = next((col for col in df_to_temp.columns if 'nº atendimento' in col or 'nr. atendimento' in col or 'nr. atend' in col or 'nº atend' in col), None)
+                if not col_atend_to:
+                    col_atend_to = next((col for col in df_to_temp.columns if 'atendimento' in col or 'atend.' in col), None)
                 if col_atend_to:
                     atendimentos_entregues_planilha3.update(
                         df_to_temp[col_atend_to].dropna().astype(str).str.replace(r'\.0$', '', regex=True).str.strip().unique()
@@ -407,7 +421,20 @@ if arquivos_amil:
                 lista_dfs_setores.append(df_s_temp)
             
             df_s_consolidado = pd.concat(lista_dfs_setores, ignore_index=True)
-            col_s_atend = next((c for c in df_s_consolidado.columns if 'nº atendimento' in c or 'nr. atendimento' in c or 'atendimento' in c), None)
+            # DETECÇÃO DA COLUNA DE ATENDIMENTO NA PLANILHA 2 (Setores/Especialidades):
+            # Prioriza correspondências EXATAS de cabeçalhos conhecidos de "Nº de Atendimento"
+            # (incluindo a forma abreviada "Nr. Atend."/"Nº Atend." usada pelo IW) antes de cair
+            # num fallback genérico por substring. O fallback genérico antigo ('atendimento' in c)
+            # capturava incorretamente colunas como "Dt Ini Atendimento" (uma coluna de DATA),
+            # o que quebrava todo o cruzamento de pendências por setor (ex.: Psicologia) e fazia
+            # pacientes com pendência real aparecerem como liberados no dashboard.
+            col_s_atend = next((c for c in df_s_consolidado.columns if c.strip() in ('nº atendimento', 'nr. atendimento', 'nr. atend.', 'nº atend.', 'nr.atendimento')), None)
+            if not col_s_atend:
+                col_s_atend = next((c for c in df_s_consolidado.columns if 'nº atendimento' in c or 'nr. atendimento' in c or 'nr.atendimento' in c or 'nr. atend' in c or 'nº atend' in c), None)
+            if not col_s_atend:
+                col_s_atend = next((c for c in df_s_consolidado.columns if c.strip().endswith('atendimento') or c.strip().endswith('atend.')), None)
+            if not col_s_atend:
+                col_s_atend = next((c for c in df_s_consolidado.columns if 'atendimento' in c or 'atend.' in c), None)
             col_s_esp = next((c for c in df_s_consolidado.columns if 'grupo especialidade' in c or 'especialidade' in c), None)
             col_s_template = next((c for c in df_s_consolidado.columns if 'template' in c), None)
             col_s_nome = next((c for c in df_s_consolidado.columns if c.strip() == 'nome paciente'), None)
