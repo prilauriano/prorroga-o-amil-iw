@@ -193,7 +193,7 @@ if arquivos_amil:
         
         df = pd.concat(lista_dfs_amil, ignore_index=True)
 
-        # --- FILTRO POR STATUS DO ATENDIMENTO (Planilha 1 / Pror) — REMOVIDO A PEDIDO DO USUÁRIO ---
+        # --- FILTRO POR STATUS DO ATENDIMENTO (Planilha 1 / Pror) ---
         col_status_atendimento = next((col for col in df.columns if col.strip() == 'status'), None)
 
         # --- DETECÇÃO DINÂMICA DA COLUNA DE NOME DO PACIENTE ---
@@ -703,10 +703,12 @@ if arquivos_amil:
             
             # --- 1. CARDS DE INDICADORES ---
             st.markdown("### 📌 Indicadores Estruturados da Coleta Ativa")
-            card1, card2, card3, card4, card5 = st.columns(5)
+            card1, card2, card3 = st.columns(3)
             card1.metric("Total de Pacientes", f"{total_pacientes_iw}")
             card2.metric("Quantidade de Pendentes", f"{total_pendentes_input_real}")
             card3.metric("Percentual de Conclusão", f"{pct_conclusao_atual:.2f}%", delta=f"{inseridos_count} imputados", delta_color="off")
+            
+            card4, card5, card6 = st.columns(3)
             card4.metric("Valor Total Pendente", f"R$ {valor_total_pendencias_setores:,.2f}")
             
             cont_colaboradores_cards = 0
@@ -714,13 +716,17 @@ if arquivos_amil:
                 colab_filtrados_cards = [c for c in df[col_responsavel].unique() if str(c).strip() != '' and not any(exc in str(c).upper() for exc in ["IMPLANTAÇÃO", "IMPLANTACAO", "PRORROGAÇÃO", "PRORROGACAO", "OPERAÇÃO", "OPERACAO"])]
                 cont_colaboradores_cards = len(colab_filtrados_cards)
             card5.metric("Quantidade de Colaboradores", f"{cont_colaboradores_cards}")
-            
-            card6, card7, card8, card9, card10 = st.columns(5)
             card6.metric("Total Pacientes AD", f"{df['Is_AD'].sum()}")
+            
+            card7, card8, card9 = st.columns(3)
             card7.metric("Total Pacientes ID", f"{df['Is_ID'].sum()}")
-            card8.metric("Imputs pelo Robô", f"{inputs_robo_total}")
-            card9.metric("Imputs Manualmente", f"{inputs_manual_total}")
-            card10.metric("Última Atualização", agora_brasil().strftime("%d/%m/%Y %H:%M"))
+            card8.metric("Inputs pelo Robô", f"{inputs_robo_total}")
+            card9.metric("Inputs Manuais", f"{inputs_manual_total}")
+
+            card10, card11, card12 = st.columns(3)
+            card10.metric("Liberados para Envio", f"{len(df_liberados)}")
+            card11.metric("Última Atualização", agora_brasil().strftime("%d/%m/%Y %H:%M"))
+            card12.empty()
             
             # --- BOTÃO DE GERAÇÃO PARA O HISTÓRICO ---
             st.markdown("---")
