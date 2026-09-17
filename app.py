@@ -1055,14 +1055,14 @@ if arquivos_amil:
                     st.info("Nenhum colaborador elegível localizado com os parâmetros aplicados.")
 
         # =========================================================================
-        # ABA 3 — SEGMENTAÇÃO ID / AD E ANÁLISE DE COMPLEXIDADE
+        # ABA 3 — SEGMENTAÇÃO ID / AD E ANÁLISE DE COMPLEXIDADE (CONTAGEM POR ATENDIMENTO)
         # =========================================================================
         with aba3:
             st.markdown("### Análise do Modelo de Atendimento Solar (ID vs AD)")
             
-            # Resumo Modelo Atendimento Solar (ID vs AD)
+            # Resumo Modelo Atendimento Solar (ID vs AD) por Atendimento/Orçamento
             df_id_ad = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Inserido_Amil'] == False].groupby('Tipo_Atendimento').agg(
-                Quantidade=('nome do paciente', 'nunique'),
+                Quantidade=(col_atendimento, 'count'),
                 Valor_Total=('valor_calculado', 'sum')
             ).reset_index()
             st.dataframe(df_id_ad.style.format({'Valor_Total': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
@@ -1106,33 +1106,33 @@ if arquivos_amil:
                 st.warning("Colunas de datas (`Dt Inicio` / `Dt Fim`) não foram mapeadas na planilha de Prorrogação.")
 
             # ---------------------------------------------------------------------
-            # ANÁLISE DE COMPLEXIDADE (SOMA DAS LINHAS = 971)
+            # ANÁLISE DE COMPLEXIDADE (CONTAGEM POR LINHA/ATENDIMENTO)
             # ---------------------------------------------------------------------
             st.markdown("---")
-            st.markdown("### 📊 Quantidade de Pacientes por Nível de Complexidade")
+            st.markdown("### 📊 Quantidade de Atendimentos por Nível de Complexidade")
 
             df_pendentes_comp = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Inserido_Amil'] == False].copy()
 
+            # Contagem por linha/atendimento (permite repetição do mesmo paciente)
             df_comp_dinamico = df_pendentes_comp.groupby('nivel_complexidade_exato').agg(
-                **{'Quantidade de pacientes': ('nome do paciente', 'nunique')}
+                **{'Quantidade de pacientes': (col_atendimento, 'count')}
             ).reset_index().rename(columns={'nivel_complexidade_exato': 'Nível de Complexidade'})
 
-            # SOMA TOTAL EXATA DA COLUNA (971)
-            total_linhas_comp = df_comp_dinamico['Quantidade de pacientes'].sum()
-            df_linha_total = pd.DataFrame([{'Nível de Complexidade': 'Total', 'Quantidade de pacientes': total_linhas_comp}])
+            total_atendimentos = df_comp_dinamico['Quantidade de pacientes'].sum()
+            df_linha_total = pd.DataFrame([{'Nível de Complexidade': 'Total', 'Quantidade de pacientes': total_atendimentos}])
             df_comp_dinamico_exibir = pd.concat([df_comp_dinamico, df_linha_total], ignore_index=True)
 
             st.markdown("#### **Resumo Geral por Nível de Complexidade**")
             st.dataframe(df_comp_dinamico_exibir, use_container_width=True, hide_index=True)
 
-            # Matriz Cruzada (Complexidade x Segmentação ID e AD)
+            # Matriz Cruzada (Complexidade x Segmentação ID e AD - Contagem por Atendimento)
             st.markdown("#### **Detalhamento Cruzado por Segmentação (ID e AD)**")
             if not df_pendentes_comp.empty:
                 df_crosstab = pd.crosstab(
                     df_pendentes_comp['nivel_complexidade_exato'],
                     df_pendentes_comp['Tipo_Atendimento'],
-                    values=df_pendentes_comp['nome do paciente'],
-                    aggfunc='nunique'
+                    values=df_pendentes_comp[col_atendimento],
+                    aggfunc='count'
                 ).fillna(0).astype(int).reset_index().rename(columns={'nivel_complexidade_exato': 'Nível de Complexidade'})
 
                 cols_segmentos = [c for c in df_crosstab.columns if c != 'Nível de Complexidade']
@@ -1159,7 +1159,7 @@ if arquivos_amil:
                     df_ad_view = df_ad_detalhe[[col_atendimento, 'nome do paciente', 'nivel_complexidade_exato', col_responsavel, 'valor_calculado']].copy()
                     df_ad_view.columns = ['Nº Atendimento', 'Paciente', 'Nível de Complexidade', 'Responsável', 'Valor a Cobrar (R$)']
                     df_ad_view = df_ad_view.sort_values(by='Valor a Cobrar (R$)', ascending=False)
-                    st.markdown(f"**Total: {df_ad_view['Paciente'].nunique()} pacientes | Valor: R$ {df_ad_view['Valor a Cobrar (R$)'].sum():,.2f}**")
+                    st.markdown(f"**Total: {len(df_ad_view)} atendimentos | Valor: R$ {df_ad_view['Valor a Cobrar (R$)'].sum():,.2f}**")
                     st.dataframe(df_ad_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
                 else:
                     st.info("Nenhum paciente AD pendente encontrado.")
@@ -1170,7 +1170,7 @@ if arquivos_amil:
                     df_id_view = df_id_detalhe[[col_atendimento, 'nome do paciente', 'nivel_complexidade_exato', col_responsavel, 'valor_calculado']].copy()
                     df_id_view.columns = ['Nº Atendimento', 'Paciente', 'Nível de Complexidade', 'Responsável', 'Valor a Cobrar (R$)']
                     df_id_view = df_id_view.sort_values(by='Valor a Cobrar (R$)', ascending=False)
-                    st.markdown(f"**Total: {df_id_view['Paciente'].nunique()} pacientes | Valor: R$ {df_id_view['Valor a Cobrar (R$)'].sum():,.2f}**")
+                    st.markdown(f"**Total: {len(df_id_view)} atendimentos | Valor: R$ {df_id_view['Valor a Cobrar (R$)'].sum():,.2f}**")
                     st.dataframe(df_id_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
                 else:
                     st.info("Nenhum paciente ID pendente encontrado.")
