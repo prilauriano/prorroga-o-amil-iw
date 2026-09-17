@@ -17,7 +17,7 @@ def agora_brasil():
 st.set_page_config(page_title="Dashboard Prorrogações | Solar Cuidados", page_icon="☀️", layout="wide")
 
 
-# Inicialização do Histórico em Sessão (Persistência em memória na navegação do Streamlit)
+# Inicialização do Histórico em Sessão
 _COLUNAS_HISTORICO_ATUAIS = [
     "Data da Coleta", "Hora da Coleta", "Ciclo de Prorrogação", "Total Pacientes Base", "Quantidade Pendentes",
     "Imputs por Robô", "Imputs Manuais", "Total Pacientes AD", "Total Pacientes ID", "Valor Total Base",
@@ -26,18 +26,17 @@ _COLUNAS_HISTORICO_ATUAIS = [
 ]
 
 if 'historico_coletas_df' not in st.session_state or not all(c in st.session_state.historico_coletas_df.columns for c in _COLUNAS_HISTORICO_ATUAIS):
-    # Se não existir ainda, ou se existir num formato antigo (colunas desatualizadas), recria vazio no formato atual.
     st.session_state.historico_coletas_df = pd.DataFrame(columns=_COLUNAS_HISTORICO_ATUAIS)
 
 
-# Parâmetros Padrão de Configuração de Metas (Caso o usuário queira customizar na interface)
+# Parâmetros Padrão de Configuração de Metas
 if 'meta_conclusao' not in st.session_state: st.session_state.meta_conclusao = 85.0
 if 'meta_pendencias' not in st.session_state: st.session_state.meta_pendencias = 50
 if 'meta_automacao' not in st.session_state: st.session_state.meta_automacao = 60.0
 if 'meta_valor' not in st.session_state: st.session_state.meta_valor = 500000.0
 
 
-# 2. Injeção da Paleta de Cores Exata (Bordô, Dourado e Off-White)
+# 2. Injeção da Paleta de Cores
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght=300;400;500;600;700;800&display=swap');
@@ -133,7 +132,6 @@ st.markdown("""
         border-radius: 12px !important;
     }
     
-    /* Box do Semáforo Inteligente */
     .semaforo-card {
         padding: 20px;
         border-radius: 12px;
@@ -142,7 +140,6 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(0,0,0,0.05);
     }
     
-    /* Box de Insights */
     .insight-card {
         background-color: #FFFFFF;
         border-left: 5px solid #5C1220;
@@ -188,18 +185,18 @@ if arquivos_amil:
             else:
                 df_temp = pd.read_excel(arq)
             
-            # Normalização temporária das colunas para busca sem alterar o valor das células
-            cols_originais = df_temp.columns.tolist()
             df_temp.columns = df_temp.columns.str.strip().str.lower()
             lista_dfs_amil.append(df_temp)
         
         df = pd.concat(lista_dfs_amil, ignore_index=True)
 
-        # --- FILTRO POR STATUS DO ATENDIMENTO (Planilha 1 / Pror) ---
+        # --- FILTRO POR STATUS DO ATENDIMENTO ---
         col_status_atendimento = next((col for col in df.columns if col.strip() == 'status'), None)
 
         # --- DETECÇÃO DINÂMICA DA COLUNA DE NOME DO PACIENTE ---
         col_paciente_detectado = next((col for col in df.columns if col.strip() == 'nome do paciente'), None)
+        if not col_paciente_detectado:
+            col_paciente_detectado = next((col for col in df.columns if col.strip() == 'nome paciente'), None)
         if not col_paciente_detectado:
             col_paciente_detectado = next((col for col in df.columns if col.strip() == 'nome'), None)
         if not col_paciente_detectado:
@@ -208,18 +205,15 @@ if arquivos_amil:
             col_paciente_detectado = next((col for col in df.columns if 'nome' in col and 'paciente' in col), None)
         if not col_paciente_detectado:
             col_paciente_detectado = next((col for col in df.columns if 'paciente' in col), None)
-        if not col_paciente_detectado:
-            col_paciente_detectado = next((col for col in df.columns if col.strip().startswith('nome')), None)
 
         if col_paciente_detectado and col_paciente_detectado != 'nome do paciente':
             df = df.rename(columns={col_paciente_detectado: 'nome do paciente'})
         elif not col_paciente_detectado:
             df['nome do paciente'] = ''
 
-        # --- DETECÇÃO DINÂMICA E EXATA DA COLUNA NÍVEL DE COMPLEXIDADE ---
+        # --- DETECÇÃO DA COLUNA NÍVEL DE COMPLEXIDADE ---
         col_complexidade_detectada = next((col for col in df.columns if 'complexidade' in col), None)
         if col_complexidade_detectada:
-            # Preserva exatamente a string original da célula
             df['nivel_complexidade_exato'] = df[col_complexidade_detectada].fillna('Não Informado').astype(str).str.strip()
         else:
             df['nivel_complexidade_exato'] = 'Não Informado'
@@ -238,7 +232,10 @@ if arquivos_amil:
         col_classificacao = next((col for col in df.columns if 'classific. atendimento' in col or 'classific.' in col or 'classificacao' in col), 'classific. atendimento')
         col_comentarios = next((col for col in df.columns if 'comentário' in col or 'comentario' in col), None)
 
-        # --- RENOMEIA COLUNAS COM NOME ABREVIADO/NOVO DO IW PARA O NOME CANÔNICO USADO NO RESTO DO CÓDIGO ---
+        # Colunas de Datas para Mudança de Modalidade
+        col_dt_inicio = next((c for c in df.columns if c.strip() in ('dt inicio', 'dt. inicio', 'data inicio', 'dt_inicio')), None)
+        col_dt_fim = next((c for c in df.columns if c.strip() in ('dt fim', 'dt. fim', 'data fim', 'dt_fim')), None)
+
         col_id_orcam_detectado = next((col for col in df.columns if col.strip() == 'id orçam.'), None)
         if not col_id_orcam_detectado:
             col_id_orcam_detectado = next((col for col in df.columns if 'id' in col and ('orç' in col or 'orc' in col)), None)
@@ -251,7 +248,6 @@ if arquivos_amil:
         if col_guia_tiss_detectado and col_guia_tiss_detectado != 'nº guia solicitação (tiss)':
             df = df.rename(columns={col_guia_tiss_detectado: 'nº guia solicitação (tiss)'})
         
-        # FIXAÇÃO EXATA DA COLUNA DE RESPONSÁVEL DO IW
         col_responsavel = next((col for col in df.columns if col.strip() in ('persona resp aut', 'pessoa resp aut', 'responsavel', 'resp aut')), None)
         if not col_responsavel:
             col_responsavel = next((col for col in df.columns if col.strip() == 'resp orç.'), None)
@@ -314,7 +310,7 @@ if arquivos_amil:
             lambda x: 'ID (Internação Domiciliar)' if str(x).strip().upper().startswith('ID') else ('AD (Atenção Domiciliar)' if str(x).strip().upper().startswith('AD') else 'Outros')
         ) if col_classificacao in df.columns else 'Outros'
 
-        # --- VALIDAÇÃO ESTRITA DO Nº GUIA TISS PARA DEFINIR "INSERIDO NA AMIL" ---
+        # --- VALIDAÇÃO GUIA TISS ---
         if 'nº guia solicitação (tiss)' in df.columns:
             df['nº guia solicitação (tiss)'] = df['nº guia solicitação (tiss)'].fillna('').astype(str).str.strip()
             df['Inserido_Amil'] = df['nº guia solicitação (tiss)'].str.match(r'^\d{9}$')
@@ -346,7 +342,7 @@ if arquivos_amil:
         else:
             df['Possui_Alerta_Status_Rel'] = False
 
-        # --- 📑 LEITURA DA PLANILHA 3 (PACIENTES TO COM EVOLUÇÃO) - USANDO NOME DO PACIENTE ---
+        # --- LEITURA PLANILHA 3 (PACIENTES TO) ---
         atendimentos_entregues_planilha3 = set()
         nomes_entregues_planilha3 = set()
         if arquivos_to:
@@ -384,7 +380,7 @@ if arquivos_amil:
                         df_to_temp[col_nome_to].dropna().astype(str).str.strip().str.lower().unique()
                     )
 
-        # --- ⚙️ PROCESSAMENTO DA PLANILHA 2 (SETORES TÉCNICOS) ---
+        # --- PROCESSAMENTO PLANILHA 2 (SETORES TÉCNICOS) ---
         atendimentos_com_outras_pendencias = set()
         atendimentos_com_pendencia_to_estrita = set()
         df_s_consolidado = pd.DataFrame()
@@ -526,7 +522,7 @@ if arquivos_amil:
         
         df_faturamento_geral_sem_robo = df_faturamento_geral[df_faturamento_geral['É_Robo'] == False].copy()
 
-        # --- Normalização auxiliar (sem acento e minúscula) para comparações robustas de texto ---
+        # --- NORMALIZAÇÃO AUXILIAR ---
         def normalizar_texto_sem_acento(texto):
             texto = str(texto) if not pd.isna(texto) else ''
             texto = texto.strip().lower()
@@ -577,7 +573,6 @@ if arquivos_amil:
         valor_total_pendencias_setores = df[df['Tem_Pendencia_Setor'] == True]['valor_calculado'].sum()
         total_pendentes_input_real = df.loc[df['Inserido_Amil'] == False, col_atendimento].nunique()
         
-        # Volumetria do Robô e Manual baseada na coluna de justificativa
         inputs_robo_total = 0
         inputs_manual_total = 0
         if col_justificativa in df.columns:
@@ -620,7 +615,7 @@ if arquivos_amil:
                     valor_total_grafico_pendencias = df_ranking_setor_vilao['valor_calculado'].sum()
                     pct_vilao_do_total = (valor_vilao / valor_total_grafico_pendencias * 100) if valor_total_grafico_pendencias > 0 else 0.0
 
-        # --- RISCO DE NÃO CONCLUIR ATÉ O HORÁRIO ALVO ---
+        # --- RISCO DE PRAZO ---
         risco_prazo = False
         mensagem_prazo = ""
         if len(st.session_state.historico_coletas_df) >= 2:
@@ -711,7 +706,6 @@ if arquivos_amil:
                 </div>
             """, unsafe_allow_html=True)
             
-            # --- 1. CARDS DE INDICADORES ---
             st.markdown("### 📌 Indicadores Estruturados da Coleta Ativa")
             card1, card2, card3 = st.columns(3)
             card1.metric("Total de Pacientes", f"{total_pacientes_iw}")
@@ -738,7 +732,6 @@ if arquivos_amil:
             card11.metric("Última Atualização", agora_brasil().strftime("%d/%m/%Y %H:%M"))
             card12.empty()
             
-            # --- BOTÃO DE GERAÇÃO PARA O HISTÓRICO ---
             st.markdown("---")
             ciclo_opcao = st.selectbox("Selecione o Ciclo de Prorrogação para o Registro Histórico:", ["Ciclo 1", "Ciclo 2", "Ciclo 3", "Extraordinário"], key="sel_ciclo_historico")
             
@@ -764,7 +757,6 @@ if arquivos_amil:
                 st.session_state.historico_coletas_df = pd.concat([st.session_state.historico_coletas_df, pd.DataFrame([nova_linha])], ignore_index=True)
                 st.success("✨ Nova linha registrada com sucesso no histórico da sessão!")
 
-            # --- PREVISÃO INTELIGENTE DE CONCLUSÃO ---
             if len(st.session_state.historico_coletas_df) >= 2:
                 st.markdown("### ⏱️ Previsão Inteligente de Conclusão")
                 try:
@@ -798,7 +790,6 @@ if arquivos_amil:
                 except Exception as e:
                     st.info("Aguardando mais variações cronológicas de registros de coletas para firmar velocidades.")
 
-            # --- GRÁFICOS DE PRODUTIVIDADE OPERACIONAL ---
             st.markdown("---")
             st.markdown("### 📊 Gráficos de Produtividade e Carga de Trabalho")
             
@@ -855,7 +846,6 @@ if arquivos_amil:
                 fig_pizza.update_layout(margin=dict(t=20, b=20, l=20, r=20))
                 st.plotly_chart(fig_pizza, use_container_width=True)
 
-            # --- RELATÓRIO ANALÍTICO DA EQUIPE COM PERCENTUAIS ---
             st.markdown("---")
             st.markdown("### 👤 Relatório Analítico Complementar da Equipe")
             if col_responsavel in df.columns and not df_prod_graficos.empty:
@@ -895,7 +885,6 @@ if arquivos_amil:
                     'Percentual Manual (%)': '{:.2f}%'
                 }), use_container_width=True, hide_index=True)
 
-            # --- HISTÓRICO DAS COLETAS ---
             st.markdown("---")
             st.markdown("### 📋 Histórico das Coletas Gravadas")
             
@@ -931,7 +920,6 @@ if arquivos_amil:
             else:
                 st.info("Utilize o botão acima para registrar a primeira linha de coleta e disparar os gráficos evolutivos de linha.")
 
-            # --- INSIGHTS AUTOMÁTICOS DA COLETA & RECOMENDAÇÕES ---
             st.markdown("---")
             st.markdown("### 📊 Insights Automáticos da Coleta Ativa")
             
@@ -1039,7 +1027,6 @@ if arquivos_amil:
                         "Valor Total dos Pacientes": valor_total
                     })
 
-                    # --- LÓGICA DE PENDÊNCIAS POR COLABORADOR ---
                     df_pend_colab = df_filtrado_colab[df_filtrado_colab['Inserido_Amil'] == False]
                     paci_pendentes = len(df_pend_colab)
                     valor_pendente = df_pend_colab['valor_calculado'].sum()
@@ -1067,26 +1054,72 @@ if arquivos_amil:
                 else:
                     st.info("Nenhum colaborador elegível localizado com os parâmetros aplicados.")
 
+        # =========================================================================
+        # ABA 3 — SEGMENTAÇÃO ID / AD E ANÁLISE DE COMPLEXIDADE (ESCOPO ISOLADO)
+        # =========================================================================
         with aba3:
             st.markdown("### Análise do Modelo de Atendimento Solar (ID vs AD)")
+            
+            # Resumo Modelo Atendimento Solar (ID vs AD)
             df_id_ad = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Inserido_Amil'] == False].groupby('Tipo_Atendimento').agg(
                 Quantidade=('nome do paciente', 'nunique'),
                 Valor_Total=('valor_calculado', 'sum')
             ).reset_index()
             st.dataframe(df_id_ad.style.format({'Valor_Total': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
+            # ---------------------------------------------------------------------
+            # NOVO FILTRO / MUDANÇA DE MODALIDADE (Dt Fim Anterior + 1 Dia = Dt Início)
+            # ---------------------------------------------------------------------
+            st.markdown("---")
+            st.markdown("### 🔄 Identificação de Mudança de Modalidade")
+
+            if col_dt_inicio and col_dt_fim:
+                df_mudanca = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Inserido_Amil'] == False].copy()
+                df_mudanca['_dt_inicio_dt'] = pd.to_datetime(df_mudanca[col_dt_inicio], format='%d/%m/%Y', errors='coerce')
+                df_mudanca['_dt_fim_dt'] = pd.to_datetime(df_mudanca[col_dt_fim], format='%d/%m/%Y', errors='coerce')
+
+                # Ordena para checar a continuidade lógica por paciente
+                df_mudanca = df_mudanca.sort_values(by=['nome do paciente', '_dt_inicio_dt'])
+                df_mudanca['_prev_dt_fim'] = df_mudanca.groupby('nome do paciente')['_dt_fim_dt'].shift(1)
+                df_mudanca['_prev_classific'] = df_mudanca.groupby('nome do paciente')[col_classificacao].shift(1)
+                
+                # Regra exata: Continuidade de 1 dia entre PADs com alteração na classificação de modalidade
+                df_mudanca['_is_continuo'] = (df_mudanca['_dt_inicio_dt'] == df_mudanca['_prev_dt_fim'] + pd.Timedelta(days=1))
+                df_mudanca['_is_mudanca_mod'] = df_mudanca['_is_continuo'] & (
+                    df_mudanca['_prev_classific'].fillna('').str[:2].str.upper() != df_mudanca[col_classificacao].fillna('').str[:2].str.upper()
+                )
+
+                df_casos_mudanca = df_mudanca[df_mudanca['_is_mudanca_mod'] == True].copy()
+
+                if not df_casos_mudanca.empty:
+                    st.markdown(f"**Total de transições com continuidade identificadas:** `{len(df_casos_mudanca)}`")
+                    df_view_mudanca = df_casos_mudanca[[
+                        col_atendimento, 'nome do paciente', '_prev_classific', col_classificacao,
+                        col_dt_inicio, col_dt_fim, col_responsavel, 'valor_calculado'
+                    ]].copy()
+                    df_view_mudanca.columns = [
+                        'Nº Atendimento', 'Paciente', 'Modalidade Anterior', 'Nova Modalidade',
+                        'Dt Início Novo PAD', 'Dt Fim Novo PAD', 'Responsável', 'Valor (R$)'
+                    ]
+                    st.dataframe(df_view_mudanca.style.format({'Valor (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
+                else:
+                    st.info("Nenhuma transição direta de mudança de modalidade com continuidade exata de datas identificada na base ativa.")
+            else:
+                st.warning("Colunas de datas (`Dt Inicio` / `Dt Fim`) não foram mapeadas na planilha de Prorrogação.")
+
+            # ---------------------------------------------------------------------
+            # ANÁLISE DE COMPLEXIDADE (AGRUPAMENTO DINÂMICO DE TODOS OS NÍVEIS)
+            # ---------------------------------------------------------------------
             st.markdown("---")
             st.markdown("### 📊 Quantidade de Pacientes por Nível de Complexidade")
 
-            # Base dos pacientes na aba
             df_pendentes_comp = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Inserido_Amil'] == False].copy()
 
-            # 1. Agrupamento Dinâmico de Pacientes Únicos por Nível de Complexidade lidos diretamente da planilha
+            # Agrupamento sem predefinição de lista
             df_comp_dinamico = df_pendentes_comp.groupby('nivel_complexidade_exato').agg(
                 **{'Quantidade de pacientes': ('nome do paciente', 'nunique')}
             ).reset_index().rename(columns={'nivel_complexidade_exato': 'Nível de Complexidade'})
 
-            # Cálculo da linha do Total
             total_unicos = df_pendentes_comp['nome do paciente'].nunique()
             df_linha_total = pd.DataFrame([{'Nível de Complexidade': 'Total', 'Quantidade de pacientes': total_unicos}])
             df_comp_dinamico_exibir = pd.concat([df_comp_dinamico, df_linha_total], ignore_index=True)
@@ -1094,7 +1127,7 @@ if arquivos_amil:
             st.markdown("#### **Resumo Geral por Nível de Complexidade**")
             st.dataframe(df_comp_dinamico_exibir, use_container_width=True, hide_index=True)
 
-            # 2. Visão Cruzada por Nível de Complexidade x Segmentação ID e AD
+            # Matriz Cruzada (Complexidade x Segmentação ID e AD)
             st.markdown("#### **Detalhamento Cruzado por Segmentação (ID e AD)**")
             if not df_pendentes_comp.empty:
                 df_crosstab = pd.crosstab(
