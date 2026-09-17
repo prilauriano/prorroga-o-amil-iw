@@ -213,6 +213,13 @@ if arquivos_amil:
             df = df.rename(columns={col_paciente_detectado: 'nome do paciente'})
         elif not col_paciente_detectado:
             df['nome do paciente'] = ''
+
+        # --- DETECÇÃO DA COLUNA DE NÍVEL DE COMPLEXIDADE ---
+        col_complexidade_detectada = next((col for col in df.columns if 'complexidade' in col), None)
+        if col_complexidade_detectada:
+            df['nivel_complexidade_tratado'] = df[col_complexidade_detectada].fillna('Não Informado').astype(str).str.strip()
+        else:
+            df['nivel_complexidade_tratado'] = 'Não Informado'
         
         col_justificativa = next((col for col in df.columns if 'justificativa' in col or 'pendencia' in col), 'justificativa pendência')
         col_status_rel_orcamento = next((col for col in df.columns if 'rel' in col and ('orcamento' in col or 'orçam' in col or 'orc' in col) and 'tec' not in col), None)
@@ -575,7 +582,7 @@ if arquivos_amil:
             inputs_manual_total = (df[col_justificativa].fillna('').astype(str).str.strip() == "Ops: Manual - Em analise").sum()
         total_inputs_calculados = inputs_robo_total + inputs_manual_total
 
-        # --- CONFIGURAÇÃO LATERAL DE METAS (REQUISITO 14) ---
+        # --- CONFIGURAÇÃO LATERAL DE METAS ---
         with st.sidebar:
             st.markdown("### ⚙️ Configuração de Metas")
             st.session_state.meta_conclusao = st.number_input("Meta de Conclusão (%)", min_value=0.0, max_value=100.0, value=st.session_state.meta_conclusao)
@@ -754,7 +761,7 @@ if arquivos_amil:
                 st.session_state.historico_coletas_df = pd.concat([st.session_state.historico_coletas_df, pd.DataFrame([nova_linha])], ignore_index=True)
                 st.success("✨ Nova linha registrada com sucesso no histórico da sessão!")
 
-            # --- 15. PREVISÃO INTELIGENTE DE CONCLUSÃO ---
+            # --- PREVISÃO INTELIGENTE DE CONCLUSÃO ---
             if len(st.session_state.historico_coletas_df) >= 2:
                 st.markdown("### ⏱️ Previsão Inteligente de Conclusão")
                 try:
@@ -1059,8 +1066,55 @@ if arquivos_amil:
 
         with aba3:
             st.markdown("### Análise do Modelo de Atendimento Solar (ID vs AD)")
-            df_id_ad = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Inserido_Amil'] == False].groupby('Tipo_Atendimento').agg(Quantidade=('nome do paciente', 'count'), Valor_Total=('valor_calculado', 'sum')).reset_index()
+            df_id_ad = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Inserido_Amil'] == False].groupby('Tipo_Atendimento').agg(
+                Quantidade=('nome do paciente', 'nunique'),
+                Valor_Total=('valor_calculado', 'sum')
+            ).reset_index()
             st.dataframe(df_id_ad.style.format({'Valor_Total': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
+
+            st.markdown("---")
+            st.markdown("### 📊 Volumetria por Nível de Complexidade")
+
+            # Base filtrada para pacientes pendentes de faturamento
+            df_pendentes_comp = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Inserido_Amil'] == False].copy()
+
+            # 1. Contagem geral por Nível de Complexidade (Pacientes Únicos)
+            df_comp_geral = df_pendentes_comp.groupby('nivel_complexidade_tratado').agg(
+                **{'Quantidade de Pacientes': ('nome do paciente', 'nunique')}
+            ).reset_index().rename(columns={'nivel_complexidade_tratado': 'Complexidade'})
+
+            # Adiciona linha do Total Geral
+            total_pacientes_comp = df_pendentes_comp['nome do paciente'].nunique()
+            df_total_geral = pd.DataFrame([{'Complexidade': 'Total', 'Quantidade de Pacientes': total_pacientes_comp}])
+            df_comp_geral_exibir = pd.concat([df_comp_geral, df_total_geral], ignore_index=True)
+
+            st.markdown("#### **Visão Geral — Todos os Pacientes Pendentes**")
+            st.dataframe(df_comp_geral_exibir, use_container_width=True, hide_index=True)
+
+            # 2. Tabela cruzada respeitando a segmentação ID e AD
+            st.markdown("#### **Cruzamento: Complexidade x Segmentação (ID e AD)**")
+            if not df_pendentes_comp.empty:
+                df_cross_comp = pd.crosstab(
+                    df_pendentes_comp['nivel_complexidade_tratado'],
+                    df_pendentes_comp['Tipo_Atendimento'],
+                    values=df_pendentes_comp['nome do paciente'],
+                    aggfunc='nunique'
+                ).fillna(0).astype(int).reset_index().rename(columns={'nivel_complexidade_tratado': 'Complexidade'})
+
+                # Adiciona coluna de Total por Linha
+                colunas_tipos = [c for c in df_cross_comp.columns if c != 'Complexidade']
+                df_cross_comp['Total'] = df_cross_comp[colunas_tipos].sum(axis=1)
+
+                # Adiciona linha de Total por Coluna
+                linha_total_cross = {'Complexidade': 'Total'}
+                for col_t in colunas_tipos:
+                    linha_total_cross[col_t] = df_cross_comp[col_t].sum()
+                linha_total_cross['Total'] = df_cross_comp['Total'].sum()
+
+                df_cross_exibir = pd.concat([df_cross_comp, pd.DataFrame([linha_total_cross])], ignore_index=True)
+                st.dataframe(df_cross_exibir, use_container_width=True, hide_index=True)
+            else:
+                st.info("Sem dados pendentes para exibição da matriz cruzada.")
 
             st.markdown("---")
             st.markdown("#### 📄 Detalhamento dos Pacientes Pendentes por Tipo de Atendimento")
@@ -1072,10 +1126,10 @@ if arquivos_amil:
             with tab_seg_ad:
                 df_ad_detalhe = df_id_ad_detalhe_base[df_id_ad_detalhe_base['Is_AD'] == True].copy()
                 if not df_ad_detalhe.empty:
-                    df_ad_view = df_ad_detalhe[[col_atendimento, 'nome do paciente', col_responsavel, 'valor_calculado']].copy()
-                    df_ad_view.columns = ['Nº Atendimento', 'Paciente', 'Responsável', 'Valor a Cobrar (R$)']
+                    df_ad_view = df_ad_detalhe[[col_atendimento, 'nome do paciente', 'nivel_complexidade_tratado', col_responsavel, 'valor_calculado']].copy()
+                    df_ad_view.columns = ['Nº Atendimento', 'Paciente', 'Complexidade', 'Responsável', 'Valor a Cobrar (R$)']
                     df_ad_view = df_ad_view.sort_values(by='Valor a Cobrar (R$)', ascending=False)
-                    st.markdown(f"**Total: {len(df_ad_view)} pacientes | Valor: R$ {df_ad_view['Valor a Cobrar (R$)'].sum():,.2f}**")
+                    st.markdown(f"**Total: {df_ad_view['Paciente'].nunique()} pacientes | Valor: R$ {df_ad_view['Valor a Cobrar (R$)'].sum():,.2f}**")
                     st.dataframe(df_ad_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
                 else:
                     st.info("Nenhum paciente AD pendente encontrado.")
@@ -1083,10 +1137,10 @@ if arquivos_amil:
             with tab_seg_id:
                 df_id_detalhe = df_id_ad_detalhe_base[df_id_ad_detalhe_base['Is_ID'] == True].copy()
                 if not df_id_detalhe.empty:
-                    df_id_view = df_id_detalhe[[col_atendimento, 'nome do paciente', col_responsavel, 'valor_calculado']].copy()
-                    df_id_view.columns = ['Nº Atendimento', 'Paciente', 'Responsável', 'Valor a Cobrar (R$)']
+                    df_id_view = df_id_detalhe[[col_atendimento, 'nome do paciente', 'nivel_complexidade_tratado', col_responsavel, 'valor_calculado']].copy()
+                    df_id_view.columns = ['Nº Atendimento', 'Paciente', 'Complexidade', 'Responsável', 'Valor a Cobrar (R$)']
                     df_id_view = df_id_view.sort_values(by='Valor a Cobrar (R$)', ascending=False)
-                    st.markdown(f"**Total: {len(df_id_view)} pacientes | Valor: R$ {df_id_view['Valor a Cobrar (R$)'].sum():,.2f}**")
+                    st.markdown(f"**Total: {df_id_view['Paciente'].nunique()} pacientes | Valor: R$ {df_id_view['Valor a Cobrar (R$)'].sum():,.2f}**")
                     st.dataframe(df_id_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
                 else:
                     st.info("Nenhum paciente ID pendente encontrado.")
