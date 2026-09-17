@@ -1055,7 +1055,7 @@ if arquivos_amil:
                     st.info("Nenhum colaborador elegível localizado com os parâmetros aplicados.")
 
         # =========================================================================
-        # ABA 3 — SEGMENTAÇÃO ID / AD E ANÁLISE DE COMPLEXIDADE (ESCOPO ISOLADO)
+        # ABA 3 — SEGMENTAÇÃO ID / AD E ANÁLISE DE COMPLEXIDADE
         # =========================================================================
         with aba3:
             st.markdown("### Análise do Modelo de Atendimento Solar (ID vs AD)")
@@ -1068,7 +1068,7 @@ if arquivos_amil:
             st.dataframe(df_id_ad.style.format({'Valor_Total': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
             # ---------------------------------------------------------------------
-            # NOVO FILTRO / MUDANÇA DE MODALIDADE (Dt Fim Anterior + 1 Dia = Dt Início)
+            # MUDANÇA DE MODALIDADE (Dt Fim Anterior + 1 Dia = Dt Início)
             # ---------------------------------------------------------------------
             st.markdown("---")
             st.markdown("### 🔄 Identificação de Mudança de Modalidade")
@@ -1078,12 +1078,10 @@ if arquivos_amil:
                 df_mudanca['_dt_inicio_dt'] = pd.to_datetime(df_mudanca[col_dt_inicio], format='%d/%m/%Y', errors='coerce')
                 df_mudanca['_dt_fim_dt'] = pd.to_datetime(df_mudanca[col_dt_fim], format='%d/%m/%Y', errors='coerce')
 
-                # Ordena para checar a continuidade lógica por paciente
                 df_mudanca = df_mudanca.sort_values(by=['nome do paciente', '_dt_inicio_dt'])
                 df_mudanca['_prev_dt_fim'] = df_mudanca.groupby('nome do paciente')['_dt_fim_dt'].shift(1)
                 df_mudanca['_prev_classific'] = df_mudanca.groupby('nome do paciente')[col_classificacao].shift(1)
                 
-                # Regra exata: Continuidade de 1 dia entre PADs com alteração na classificação de modalidade
                 df_mudanca['_is_continuo'] = (df_mudanca['_dt_inicio_dt'] == df_mudanca['_prev_dt_fim'] + pd.Timedelta(days=1))
                 df_mudanca['_is_mudanca_mod'] = df_mudanca['_is_continuo'] & (
                     df_mudanca['_prev_classific'].fillna('').str[:2].str.upper() != df_mudanca[col_classificacao].fillna('').str[:2].str.upper()
@@ -1108,20 +1106,20 @@ if arquivos_amil:
                 st.warning("Colunas de datas (`Dt Inicio` / `Dt Fim`) não foram mapeadas na planilha de Prorrogação.")
 
             # ---------------------------------------------------------------------
-            # ANÁLISE DE COMPLEXIDADE (AGRUPAMENTO DINÂMICO DE TODOS OS NÍVEIS)
+            # ANÁLISE DE COMPLEXIDADE (SOMA DAS LINHAS = 971)
             # ---------------------------------------------------------------------
             st.markdown("---")
             st.markdown("### 📊 Quantidade de Pacientes por Nível de Complexidade")
 
             df_pendentes_comp = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Inserido_Amil'] == False].copy()
 
-            # Agrupamento sem predefinição de lista
             df_comp_dinamico = df_pendentes_comp.groupby('nivel_complexidade_exato').agg(
                 **{'Quantidade de pacientes': ('nome do paciente', 'nunique')}
             ).reset_index().rename(columns={'nivel_complexidade_exato': 'Nível de Complexidade'})
 
-            total_unicos = df_pendentes_comp['nome do paciente'].nunique()
-            df_linha_total = pd.DataFrame([{'Nível de Complexidade': 'Total', 'Quantidade de pacientes': total_unicos}])
+            # SOMA TOTAL EXATA DA COLUNA (971)
+            total_linhas_comp = df_comp_dinamico['Quantidade de pacientes'].sum()
+            df_linha_total = pd.DataFrame([{'Nível de Complexidade': 'Total', 'Quantidade de pacientes': total_linhas_comp}])
             df_comp_dinamico_exibir = pd.concat([df_comp_dinamico, df_linha_total], ignore_index=True)
 
             st.markdown("#### **Resumo Geral por Nível de Complexidade**")
