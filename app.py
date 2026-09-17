@@ -188,6 +188,8 @@ if arquivos_amil:
             else:
                 df_temp = pd.read_excel(arq)
             
+            # Normalização temporária das colunas para busca sem alterar o valor das células
+            cols_originais = df_temp.columns.tolist()
             df_temp.columns = df_temp.columns.str.strip().str.lower()
             lista_dfs_amil.append(df_temp)
         
@@ -214,12 +216,13 @@ if arquivos_amil:
         elif not col_paciente_detectado:
             df['nome do paciente'] = ''
 
-        # --- DETECÇÃO DA COLUNA DE NÍVEL DE COMPLEXIDADE ---
+        # --- DETECÇÃO DINÂMICA E EXATA DA COLUNA NÍVEL DE COMPLEXIDADE ---
         col_complexidade_detectada = next((col for col in df.columns if 'complexidade' in col), None)
         if col_complexidade_detectada:
-            df['nivel_complexidade_tratado'] = df[col_complexidade_detectada].fillna('Não Informado').astype(str).str.strip()
+            # Preserva exatamente a string original da célula
+            df['nivel_complexidade_exato'] = df[col_complexidade_detectada].fillna('Não Informado').astype(str).str.strip()
         else:
-            df['nivel_complexidade_tratado'] = 'Não Informado'
+            df['nivel_complexidade_exato'] = 'Não Informado'
         
         col_justificativa = next((col for col in df.columns if 'justificativa' in col or 'pendencia' in col), 'justificativa pendência')
         col_status_rel_orcamento = next((col for col in df.columns if 'rel' in col and ('orcamento' in col or 'orçam' in col or 'orc' in col) and 'tec' not in col), None)
@@ -1073,48 +1076,44 @@ if arquivos_amil:
             st.dataframe(df_id_ad.style.format({'Valor_Total': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
             st.markdown("---")
-            st.markdown("### 📊 Volumetria por Nível de Complexidade")
+            st.markdown("### 📊 Quantidade de Pacientes por Nível de Complexidade")
 
-            # Base filtrada para pacientes pendentes de faturamento
+            # Base dos pacientes na aba
             df_pendentes_comp = df_faturamento_geral_sem_robo[df_faturamento_geral_sem_robo['Inserido_Amil'] == False].copy()
 
-            # 1. Contagem geral por Nível de Complexidade (Pacientes Únicos)
-            df_comp_geral = df_pendentes_comp.groupby('nivel_complexidade_tratado').agg(
-                **{'Quantidade de Pacientes': ('nome do paciente', 'nunique')}
-            ).reset_index().rename(columns={'nivel_complexidade_tratado': 'Complexidade'})
+            # 1. Agrupamento Dinâmico de Pacientes Únicos por Nível de Complexidade lidos diretamente da planilha
+            df_comp_dinamico = df_pendentes_comp.groupby('nivel_complexidade_exato').agg(
+                **{'Quantidade de pacientes': ('nome do paciente', 'nunique')}
+            ).reset_index().rename(columns={'nivel_complexidade_exato': 'Nível de Complexidade'})
 
-            # Adiciona linha do Total Geral
-            total_pacientes_comp = df_pendentes_comp['nome do paciente'].nunique()
-            df_total_geral = pd.DataFrame([{'Complexidade': 'Total', 'Quantidade de Pacientes': total_pacientes_comp}])
-            df_comp_geral_exibir = pd.concat([df_comp_geral, df_total_geral], ignore_index=True)
+            # Cálculo da linha do Total
+            total_unicos = df_pendentes_comp['nome do paciente'].nunique()
+            df_linha_total = pd.DataFrame([{'Nível de Complexidade': 'Total', 'Quantidade de pacientes': total_unicos}])
+            df_comp_dinamico_exibir = pd.concat([df_comp_dinamico, df_linha_total], ignore_index=True)
 
-            st.markdown("#### **Visão Geral — Todos os Pacientes Pendentes**")
-            st.dataframe(df_comp_geral_exibir, use_container_width=True, hide_index=True)
+            st.markdown("#### **Resumo Geral por Nível de Complexidade**")
+            st.dataframe(df_comp_dinamico_exibir, use_container_width=True, hide_index=True)
 
-            # 2. Tabela cruzada respeitando a segmentação ID e AD
-            st.markdown("#### **Cruzamento: Complexidade x Segmentação (ID e AD)**")
+            # 2. Visão Cruzada por Nível de Complexidade x Segmentação ID e AD
+            st.markdown("#### **Detalhamento Cruzado por Segmentação (ID e AD)**")
             if not df_pendentes_comp.empty:
-                df_cross_comp = pd.crosstab(
-                    df_pendentes_comp['nivel_complexidade_tratado'],
+                df_crosstab = pd.crosstab(
+                    df_pendentes_comp['nivel_complexidade_exato'],
                     df_pendentes_comp['Tipo_Atendimento'],
                     values=df_pendentes_comp['nome do paciente'],
                     aggfunc='nunique'
-                ).fillna(0).astype(int).reset_index().rename(columns={'nivel_complexidade_tratado': 'Complexidade'})
+                ).fillna(0).astype(int).reset_index().rename(columns={'nivel_complexidade_exato': 'Nível de Complexidade'})
 
-                # Adiciona coluna de Total por Linha
-                colunas_tipos = [c for c in df_cross_comp.columns if c != 'Complexidade']
-                df_cross_comp['Total'] = df_cross_comp[colunas_tipos].sum(axis=1)
+                cols_segmentos = [c for c in df_crosstab.columns if c != 'Nível de Complexidade']
+                df_crosstab['Total de Pacientes'] = df_crosstab[cols_segmentos].sum(axis=1)
 
-                # Adiciona linha de Total por Coluna
-                linha_total_cross = {'Complexidade': 'Total'}
-                for col_t in colunas_tipos:
-                    linha_total_cross[col_t] = df_cross_comp[col_t].sum()
-                linha_total_cross['Total'] = df_cross_comp['Total'].sum()
+                linha_total_crosstab = {'Nível de Complexidade': 'Total'}
+                for col_seg in cols_segmentos:
+                    linha_total_crosstab[col_seg] = df_crosstab[col_seg].sum()
+                linha_total_crosstab['Total de Pacientes'] = df_crosstab['Total de Pacientes'].sum()
 
-                df_cross_exibir = pd.concat([df_cross_comp, pd.DataFrame([linha_total_cross])], ignore_index=True)
-                st.dataframe(df_cross_exibir, use_container_width=True, hide_index=True)
-            else:
-                st.info("Sem dados pendentes para exibição da matriz cruzada.")
+                df_crosstab_exibir = pd.concat([df_crosstab, pd.DataFrame([linha_total_crosstab])], ignore_index=True)
+                st.dataframe(df_crosstab_exibir, use_container_width=True, hide_index=True)
 
             st.markdown("---")
             st.markdown("#### 📄 Detalhamento dos Pacientes Pendentes por Tipo de Atendimento")
@@ -1126,8 +1125,8 @@ if arquivos_amil:
             with tab_seg_ad:
                 df_ad_detalhe = df_id_ad_detalhe_base[df_id_ad_detalhe_base['Is_AD'] == True].copy()
                 if not df_ad_detalhe.empty:
-                    df_ad_view = df_ad_detalhe[[col_atendimento, 'nome do paciente', 'nivel_complexidade_tratado', col_responsavel, 'valor_calculado']].copy()
-                    df_ad_view.columns = ['Nº Atendimento', 'Paciente', 'Complexidade', 'Responsável', 'Valor a Cobrar (R$)']
+                    df_ad_view = df_ad_detalhe[[col_atendimento, 'nome do paciente', 'nivel_complexidade_exato', col_responsavel, 'valor_calculado']].copy()
+                    df_ad_view.columns = ['Nº Atendimento', 'Paciente', 'Nível de Complexidade', 'Responsável', 'Valor a Cobrar (R$)']
                     df_ad_view = df_ad_view.sort_values(by='Valor a Cobrar (R$)', ascending=False)
                     st.markdown(f"**Total: {df_ad_view['Paciente'].nunique()} pacientes | Valor: R$ {df_ad_view['Valor a Cobrar (R$)'].sum():,.2f}**")
                     st.dataframe(df_ad_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
@@ -1137,8 +1136,8 @@ if arquivos_amil:
             with tab_seg_id:
                 df_id_detalhe = df_id_ad_detalhe_base[df_id_ad_detalhe_base['Is_ID'] == True].copy()
                 if not df_id_detalhe.empty:
-                    df_id_view = df_id_detalhe[[col_atendimento, 'nome do paciente', 'nivel_complexidade_tratado', col_responsavel, 'valor_calculado']].copy()
-                    df_id_view.columns = ['Nº Atendimento', 'Paciente', 'Complexidade', 'Responsável', 'Valor a Cobrar (R$)']
+                    df_id_view = df_id_detalhe[[col_atendimento, 'nome do paciente', 'nivel_complexidade_exato', col_responsavel, 'valor_calculado']].copy()
+                    df_id_view.columns = ['Nº Atendimento', 'Paciente', 'Nível de Complexidade', 'Responsável', 'Valor a Cobrar (R$)']
                     df_id_view = df_id_view.sort_values(by='Valor a Cobrar (R$)', ascending=False)
                     st.markdown(f"**Total: {df_id_view['Paciente'].nunique()} pacientes | Valor: R$ {df_id_view['Valor a Cobrar (R$)'].sum():,.2f}**")
                     st.dataframe(df_id_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
