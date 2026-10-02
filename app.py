@@ -582,7 +582,7 @@ if arquivos_amil:
 
         # --- CONFIGURAÇÃO LATERAL DE METAS ---
         with st.sidebar:
-            st.markdown("### ⚙️ Configuração de Metas")
+            st.markdown("### ⚙️️ Configuração de Metas")
             st.session_state.meta_conclusao = st.number_input("Meta de Conclusão (%)", min_value=0.0, max_value=100.0, value=st.session_state.meta_conclusao)
             st.session_state.meta_pendencias = st.number_input("Meta Máxima de Pendências (Pacientes)", min_value=0, value=st.session_state.meta_pendencias)
             st.session_state.meta_automacao = st.number_input("Meta de Automação (%)", min_value=0.0, max_value=100.0, value=st.session_state.meta_automacao)
@@ -878,6 +878,12 @@ if arquivos_amil:
                         "Valor Total": r_gc["Valor Total"]
                     })
                 df_grid_re2 = pd.DataFrame(df_analitico_completo)
+                
+                buffer_analitico = io.BytesIO()
+                with pd.ExcelWriter(buffer_analitico, engine='xlsxwriter') as writer:
+                    df_grid_re2.to_excel(writer, sheet_name='Analítico Equipe', index=False)
+                st.download_button(label="📥 Baixar Planilha Estruturada: Relatório Analítico da Equipe", data=buffer_analitico.getvalue(), file_name="relatorio_analitico_equipe.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                
                 st.dataframe(df_grid_re2.style.format({
                     'Valor Total': 'R$ {:,.2f}',
                     'Percentual da Base (%)': '{:.2f}%',
@@ -899,6 +905,12 @@ if arquivos_amil:
                     (st.session_state.historico_coletas_df["Data da Coleta"].isin(f_data)) &
                     (st.session_state.historico_coletas_df["Hora da Coleta"].isin(f_hora))
                 ]
+                
+                buffer_hist = io.BytesIO()
+                with pd.ExcelWriter(buffer_hist, engine='xlsxwriter') as writer:
+                    df_historico_filtrado.to_excel(writer, sheet_name='Histórico Coletas', index=False)
+                st.download_button(label="📥 Baixar Planilha Estruturada: Histórico das Coletas", data=buffer_hist.getvalue(), file_name="historico_coletas.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                
                 st.dataframe(df_historico_filtrado, use_container_width=True, hide_index=True)
                 
                 df_historico_filtrado['Data_Hora_Eixo'] = df_historico_filtrado['Data da Coleta'] + " " + df_historico_filtrado['Hora da Coleta']
@@ -1044,12 +1056,24 @@ if arquivos_amil:
                         "Imputs feitos pelo Robô", "Imputs Manuais", 
                         "Quantitativo Total de Pacientes", "Valor Total dos Pacientes"
                     ]]
+                    
+                    buffer_gestao = io.BytesIO()
+                    with pd.ExcelWriter(buffer_gestao, engine='xlsxwriter') as writer:
+                        df_gestao_final.to_excel(writer, sheet_name='Gestão Equipe', index=False)
+                    st.download_button(label="📥 Baixar Planilha Estruturada: Produtividade da Equipe", data=buffer_gestao.getvalue(), file_name="produtividade_equipe.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    
                     st.dataframe(df_gestao_final.style.format({'Valor Total dos Pacientes': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
                     st.markdown("---")
                     st.markdown("### ⏳ Pendências de Imputação e Carteira Parada por Colaborador")
                     df_pend_final = pd.DataFrame(linhas_pendentes_gestao)
                     df_pend_final = df_pend_final.sort_values(by="Valor Pendente de Imputação", ascending=False)
+                    
+                    buffer_pend_gestao = io.BytesIO()
+                    with pd.ExcelWriter(buffer_pend_gestao, engine='xlsxwriter') as writer:
+                        df_pend_final.to_excel(writer, sheet_name='Pendências Colaborador', index=False)
+                    st.download_button(label="📥 Baixar Planilha Estruturada: Pendências por Colaborador", data=buffer_pend_gestao.getvalue(), file_name="pendencias_colaborador.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    
                     st.dataframe(df_pend_final.style.format({'Valor Pendente de Imputação': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
                 else:
                     st.info("Nenhum colaborador elegível localizado com os parâmetros aplicados.")
@@ -1065,6 +1089,12 @@ if arquivos_amil:
                 Quantidade=(col_atendimento, 'count'),
                 Valor_Total=('valor_calculado', 'sum')
             ).reset_index()
+            
+            buffer_id_ad = io.BytesIO()
+            with pd.ExcelWriter(buffer_id_ad, engine='xlsxwriter') as writer:
+                df_id_ad.to_excel(writer, sheet_name='Modelo Atendimento', index=False)
+            st.download_button(label="📥 Baixar Planilha Estruturada: Modelo de Atendimento (ID vs AD)", data=buffer_id_ad.getvalue(), file_name="modelo_atendimento_id_ad.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            
             st.dataframe(df_id_ad.style.format({'Valor_Total': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
             # ---------------------------------------------------------------------
@@ -1099,6 +1129,12 @@ if arquivos_amil:
                         'Nº Atendimento', 'Paciente', 'Modalidade Anterior', 'Nova Modalidade',
                         'Dt Início Novo PAD', 'Dt Fim Novo PAD', 'Responsável', 'Valor (R$)'
                     ]
+                    
+                    buffer_mudanca = io.BytesIO()
+                    with pd.ExcelWriter(buffer_mudanca, engine='xlsxwriter') as writer:
+                        df_view_mudanca.to_excel(writer, sheet_name='Mudança Modalidade', index=False)
+                    st.download_button(label="📥 Baixar Planilha Estruturada: Mudança de Modalidade", data=buffer_mudanca.getvalue(), file_name="mudanca_modalidade.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    
                     st.dataframe(df_view_mudanca.style.format({'Valor (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
                 else:
                     st.info("Nenhuma transição direta de mudança de modalidade com continuidade exata de datas identificada na base ativa.")
@@ -1121,6 +1157,12 @@ if arquivos_amil:
             df_comp_dinamico_exibir = pd.concat([df_comp_dinamico, df_linha_total], ignore_index=True)
 
             st.markdown("#### **Resumo Geral por Nível de Complexidade**")
+            
+            buffer_comp = io.BytesIO()
+            with pd.ExcelWriter(buffer_comp, engine='xlsxwriter') as writer:
+                df_comp_dinamico_exibir.to_excel(writer, sheet_name='Nível Complexidade', index=False)
+            st.download_button(label="📥 Baixar Planilha Estruturada: Resumo por Nível de Complexidade", data=buffer_comp.getvalue(), file_name="resumo_nivel_complexidade.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            
             st.dataframe(df_comp_dinamico_exibir, use_container_width=True, hide_index=True)
 
             # Matriz Cruzada (Complexidade x Segmentação ID e AD - Base Bruta IW)
@@ -1142,6 +1184,12 @@ if arquivos_amil:
                 linha_total_crosstab['Total de Pacientes'] = df_crosstab['Total de Pacientes'].sum()
 
                 df_crosstab_exibir = pd.concat([df_crosstab, pd.DataFrame([linha_total_crosstab])], ignore_index=True)
+                
+                buffer_cross = io.BytesIO()
+                with pd.ExcelWriter(buffer_cross, engine='xlsxwriter') as writer:
+                    df_crosstab_exibir.to_excel(writer, sheet_name='Cruzamento Complexidade', index=False)
+                st.download_button(label="📥 Baixar Planilha Estruturada: Detalhamento Cruzado por Segmentação", data=buffer_cross.getvalue(), file_name="cruzamento_complexidade_segmentacao.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                
                 st.dataframe(df_crosstab_exibir, use_container_width=True, hide_index=True)
 
             st.markdown("---")
@@ -1156,6 +1204,12 @@ if arquivos_amil:
                     df_ad_view.columns = ['Nº Atendimento', 'Paciente', 'Nível de Complexidade', 'Responsável', 'Valor a Cobrar (R$)']
                     df_ad_view = df_ad_view.sort_values(by='Valor a Cobrar (R$)', ascending=False)
                     st.markdown(f"**Total: {len(df_ad_view)} atendimentos | Valor: R$ {df_ad_view['Valor a Cobrar (R$)'].sum():,.2f}**")
+                    
+                    buffer_ad = io.BytesIO()
+                    with pd.ExcelWriter(buffer_ad, engine='xlsxwriter') as writer:
+                        df_ad_view.to_excel(writer, sheet_name='Pacientes AD', index=False)
+                    st.download_button(label="📥 Baixar Planilha Estruturada: Pacientes AD", data=buffer_ad.getvalue(), file_name="pacientes_ad_detalhado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    
                     st.dataframe(df_ad_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
                 else:
                     st.info("Nenhum paciente AD encontrado.")
@@ -1167,6 +1221,12 @@ if arquivos_amil:
                     df_id_view.columns = ['Nº Atendimento', 'Paciente', 'Nível de Complexidade', 'Responsável', 'Valor a Cobrar (R$)']
                     df_id_view = df_id_view.sort_values(by='Valor a Cobrar (R$)', ascending=False)
                     st.markdown(f"**Total: {len(df_id_view)} atendimentos | Valor: R$ {df_id_view['Valor a Cobrar (R$)'].sum():,.2f}**")
+                    
+                    buffer_id = io.BytesIO()
+                    with pd.ExcelWriter(buffer_id, engine='xlsxwriter') as writer:
+                        df_id_view.to_excel(writer, sheet_name='Pacientes ID', index=False)
+                    st.download_button(label="📥 Baixar Planilha Estruturada: Pacientes ID", data=buffer_id.getvalue(), file_name="pacientes_id_detalhado.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    
                     st.dataframe(df_id_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
                 else:
                     st.info("Nenhum paciente ID encontrado.")
@@ -1270,6 +1330,12 @@ if arquivos_amil:
             if len(df_fila_robo) > 0:
                 df_robo_view = df_fila_robo[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', col_justificativa, 'valor_calculado']].copy()
                 df_robo_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Justificativa Pendência', 'Valor a Cobrar (R$)']
+                
+                buffer_robo = io.BytesIO()
+                with pd.ExcelWriter(buffer_robo, engine='xlsxwriter') as writer:
+                    df_robo_view.to_excel(writer, sheet_name='Fila Robô', index=False)
+                st.download_button(label="📥 Baixar Planilha Estruturada: Liberados para o Robô", data=buffer_robo.getvalue(), file_name="liberados_para_robo.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                
                 st.dataframe(df_robo_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
             else: st.info("💡 Nenhum paciente aguardando ou liberado para o robô detectado.")
 
@@ -1277,6 +1343,12 @@ if arquivos_amil:
             st.markdown("### 🏠 Listagem Isolada — Contrato RioHome")
             df_riohome_view = df_riohome[[col_atendimento, 'id orçam.', 'nome do paciente', 'Tipo_Atendimento', col_responsavel, col_justificativa, 'valor_calculado']].copy()
             df_riohome_view.columns = ['Nº Atendimento', 'ID Orçamento', 'Paciente', 'Tipo', 'Responsável', 'Justificativa Pendência', 'Valor a Cobrar (R$)']
+            
+            buffer_riohome = io.BytesIO()
+            with pd.ExcelWriter(buffer_riohome, engine='xlsxwriter') as writer:
+                df_riohome_view.to_excel(writer, sheet_name='Contrato RioHome', index=False)
+            st.download_button(label="📥 Baixar Planilha Estruturada: Contrato RioHome", data=buffer_riohome.getvalue(), file_name="contrato_riohome.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            
             st.dataframe(df_riohome_view.style.format({'Valor a Cobrar (R$)': 'R$ {:,.2f}'}), use_container_width=True, hide_index=True)
 
         with aba7:
@@ -1291,6 +1363,12 @@ if arquivos_amil:
                     pos_insercao += 1
                 df_erro_print = df_base_erros[colunas_erro].copy()
                 df_erro_print.columns = colunas_visualizacao
+                
+                buffer_erro = io.BytesIO()
+                with pd.ExcelWriter(buffer_erro, engine='xlsxwriter') as writer:
+                    df_erro_print.to_excel(writer, sheet_name='Alertas de Erro', index=False)
+                st.download_button(label="📥 Baixar Planilha Estruturada: Alertas de Erro", data=buffer_erro.getvalue(), file_name="alertas_de_erro.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                
                 st.dataframe(df_erro_print, use_container_width=True, hide_index=True)
             else: st.success("✨ Excelente! Nenhum erro de 'Arquivo Não Encontrado' foi detectado.")
 
